@@ -212,6 +212,12 @@ async function cloudSync() {
   if (error) return setSync('Offline — saved on this device');
   if (!data) await cloudPush(); // first time: upload what's on this device
   else if (data.version > Cloud.version) {
+    // This device has its own records that were never uploaded: never replace them without asking.
+    if (Cloud.version === 0 && ['clients', 'appts', 'payments', 'expenses'].some(k => S[k].some(x => !x.demo))) {
+      const keepLocal = confirm("This device has business records that aren't online yet.\n\nOK = keep THIS device's records (they replace what's online)\nCancel = use the online records (this device's records are downloaded as a backup first)");
+      if (keepLocal) { Cloud.version = data.version; Cloud.dirty = true; await cloudPush(); await loadBookings(); return; }
+      download(`queen-of-the-krown-this-device-${today()}.json`, JSON.stringify(S), 'application/json');
+    }
     if (Cloud.dirty && Cloud.version > 0) toast('Loaded newer changes from your other device. Check your last change here.', 'error');
     S = migrate(data.data); Cloud.version = data.version; Cloud.dirty = false; saveLocalOnly();
     $('#brandName').textContent = S.settings.name; setSync('Synced ✓'); refresh();
