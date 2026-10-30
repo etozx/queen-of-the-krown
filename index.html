@@ -18,6 +18,7 @@
         <span class="crown" data-icon="crown"></span>
         <span class="brand-name" id="brandName">Queen of the Krown</span>
       </a>
+      <div class="sync" id="syncStatus" aria-live="polite"></div>
       <nav class="nav" id="nav"></nav>
       <button class="btn gold block side-pay" data-act="logPayment"><span data-icon="plus"></span>Log Payment</button>
     </aside>
@@ -45,12 +46,16 @@
     </nav>
   </div>
 
+  <div id="auth" class="auth" hidden></div>
+  <div id="portal" hidden></div>
   <div id="lock" class="lock" hidden></div>
   <div id="sheet" class="sheet-wrap" hidden></div>
   <div id="toasts" class="toasts" aria-live="polite"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <script src="logic.js"></script>
   <script src="app.js"></script>
+  <script src="cloud.js"></script>
 </body>
 </html>

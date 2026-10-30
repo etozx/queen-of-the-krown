@@ -91,4 +91,17 @@ assert.strictEqual(cmd('yes').intent, 'yes');
 assert.strictEqual(cmd('write me a poem about cats').intent, 'unknown');
 assert.strictEqual(cmd("what's the weather").intent, 'unknown');
 
+// online booking slots
+const hours = { start: '09:00', end: '19:00', days: [2, 3, 4, 5, 6] };
+let slots = L.freeSlots({ date: '2026-11-03', duration: 120, hours, busy: [] });
+assert.strictEqual(slots[0], '09:00');
+assert.strictEqual(slots[slots.length - 1], '17:00'); // a 2h service must finish by 7pm
+slots = L.freeSlots({ date: '2026-11-03', duration: 120, hours, busy: [{ date: '2026-11-03', time: '11:00', duration: 180 }, { date: '2026-11-04', time: '09:00', duration: 600 }] });
+assert.ok(slots.includes('09:00') && !slots.includes('09:30') && !slots.includes('13:30') && slots.includes('14:00'));
+assert.deepStrictEqual(L.freeSlots({ date: '2026-11-03', duration: 300, hours, busy: [], nowMins: 13 * 60 }), ['13:30', '14:00']);
+assert.ok(L.overlaps({ date: 'd', time: '10:00', duration: 120 }, { date: 'd', time: '11:30', duration: 60 }));
+assert.ok(!L.overlaps({ date: 'd', time: '10:00', duration: 120 }, { date: 'd', time: '12:00', duration: 60 }));
+assert.ok(!L.overlaps({ date: 'd', time: '10:00' }, { date: 'e', time: '10:00' }));
+assert.deepStrictEqual(L.openDates('2026-11-01', 7, hours.days), ['2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07']); // Sun Nov 1 -> Tue..Sat
+
 console.log('All tests passed');

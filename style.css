@@ -279,6 +279,32 @@ table.simple .input { min-height: 38px; padding: 6px 10px; font-size: 14px; }
 .wk-ev.paid, .wk-ev.done { background: var(--green-soft); border-color: var(--green); color: #1d4d31; }
 .wk-ev.deposit, .wk-ev.partial { background: var(--amber-soft); border-color: var(--amber); }
 
+/* ---------- login / client portal ---------- */
+.sync { font-size: 12.5px; color: #8f8676; padding: 0 10px; margin-top: -12px; min-height: 16px; }
+.auth { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+  background: radial-gradient(circle at 50% 0%, #2a2318, #121212 60%); }
+.auth-card { width: 100%; max-width: 420px; background: #fff; border-radius: 24px; padding: 28px 24px; box-shadow: 0 20px 60px rgba(0, 0, 0, .35); }
+.auth-brand { text-align: center; margin-bottom: 18px; }
+.auth-brand .crown { justify-content: center; color: var(--gold); }
+.auth-brand .crown svg.i { width: 44px; height: 44px; }
+.auth-brand h1 { font-family: var(--serif); font-size: 32px; margin: 6px 0 4px; }
+.auth-brand p { color: var(--muted); margin: 0; }
+.auth-tabs { display: flex; margin-bottom: 16px; }
+.auth-tabs button { flex: 1; }
+.portal { max-width: 720px; margin: 0 auto; padding: 16px 16px 48px; }
+.portal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.portal-head .brand-name { color: var(--ink); font-size: 22px; }
+.portal-head .crown { color: var(--gold); }
+.step { font-weight: 600; margin: 18px 0 8px; }
+.svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.svc { text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 14px; padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; min-height: 60px; }
+.svc span { color: var(--muted); font-size: 14px; }
+.svc.on { border-color: var(--ink); background: var(--ink); color: #fff; }
+.svc.on span { color: var(--gold-2); }
+.slots { display: flex; flex-wrap: wrap; gap: 8px; }
+.slots button { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 8px 14px; cursor: pointer; min-height: 42px; font-size: 14.5px; }
+.slots button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+
 /* ---------- lock ---------- */
 .lock { position: fixed; inset: 0; background: radial-gradient(circle at 50% 30%, #2a2318, #0e0e0e 70%); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 70; }
 .lock-card { width: 100%; max-width: 360px; text-align: center; color: #fff; }

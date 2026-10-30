@@ -216,6 +216,23 @@
     return { intent: 'unknown' };
   };
 
+  // ---------- online booking ----------
+  const toMin = t => +t.slice(0, 2) * 60 + +t.slice(3, 5);
+  // Start times (every `step` minutes) where the whole service fits inside opening hours without overlapping anything booked.
+  L.freeSlots = ({ date, duration, hours, busy, step = 30, nowMins = -1 }) => {
+    const open = toMin(hours.start), close = toMin(hours.end);
+    const taken = busy.filter(b => b.date === date && b.time).map(b => [toMin(b.time), toMin(b.time) + (b.duration || 120)]);
+    const out = [];
+    for (let m = open; m + duration <= close; m += step) {
+      if (m <= nowMins || taken.some(([s, e]) => m < e && s < m + duration)) continue;
+      out.push(pad(Math.floor(m / 60)) + ':' + pad(m % 60));
+    }
+    return out;
+  };
+  L.overlaps = (a, b) => a.date === b.date && !!a.time && !!b.time
+    && toMin(a.time) < toMin(b.time) + (b.duration || 120) && toMin(b.time) < toMin(a.time) + (a.duration || 120);
+  L.openDates =(from, count, days) => [...Array(count)].map((_, i) => L.addDays(from, i)).filter(d => days.includes(L.parse(d).getDay()));
+
   L.time12 = t => {
     if (!t) return '';
     const [h, m] = t.split(':').map(Number);
