@@ -151,6 +151,71 @@
     }).filter(Boolean);
   };
 
+  // ---------- voice / typed commands ----------
+  // Rule-based on purpose: free, private, and it can only ever do things inside the app.
+  // shortcut: amounts must come through as digits ("120", "$85.50"), which phone dictation does; spelled-out numbers aren't parsed.
+  L.spokenAmount = t => {
+    const m = t.replace(/(\d),(\d{3})/g, '$1$2').match(/\$\s?(\d+(?:\.\d{1,2})?)|(\d+(?:\.\d{1,2})?)\s*(?:dollars|bucks)|(?:^|\s)(\d+(?:\.\d{1,2})?)(?=\s|$)/);
+    return m ? Math.round(Number(m[1] || m[2] || m[3]) * 100) : 0;
+  };
+  // Names mentioned in the text: full-name matches first, then first-name matches.
+  L.matchNames = (t, names) => {
+    const has = w => w.length > 1 && new RegExp(`(^|\\s)${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}('s)?(\\s|$)`).test(t);
+    const full = names.filter(n => has(n.toLowerCase()));
+    const first = names.filter(n => !full.includes(n) && has(n.toLowerCase().split(/\s+/)[0]));
+    return [...full, ...first];
+  };
+  const CAT_WORDS = [['Hair & Bundles', /bundle|weave hair|raw hair/], ['Wigs', /\bwigs?\b/], ['Lace', /lace|frontal|closure/], ['Braiding Hair', /braid/],
+    ['Hair Products', /mousse|edge|gel|shampoo|conditioner|product|spray|oil|protectant|serum/], ['Supplies', /glove|cap|clip|suppl|thread|needle|glue|band|towel/],
+    ['Equipment', /iron|dryer|chair|equipment|clipper|steamer|tripod|ring light/], ['Advertising', /\bads?\b|promo|instagram|tiktok|flyer|advertis|marketing/],
+    ['Business', /booksy|subscription|rent|license|insurance|fee/]];
+  L.guessCategory = (t, cats) => (CAT_WORDS.find(([c, re]) => cats.includes(c) && re.test(t)) || [cats.includes('Other') ? 'Other' : cats[0]])[0];
+  const PERIOD = t => (/yesterday/.test(t) ? 'yesterday' : /today|tonight/.test(t) ? 'today' : /week/.test(t) ? 'week' : /month/.test(t) ? 'month' : /year/.test(t) ? 'year' : '');
+  const PAGES_SAID = [['appointments', /appointment|calendar|schedule/], ['clients', /client/], ['payments', /payment/], ['expenses', /expense/],
+    ['supplies', /suppl|hair/], ['analytics', /analytic|report|chart|graph/], ['settings', /setting/], ['dashboard', /dashboard|home/]];
+
+  L.parseCommand = (raw, ctx) => {
+    const t = ' ' + String(raw).toLowerCase().replace(/[’]/g, "'").replace(/(\d),(\d{3})/g, '$1$2').replace(/[!?,]|\.(?!\d)/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+    const s = t.trim();
+    const amount = L.spokenAmount(s), clients = L.matchNames(s, ctx.clients);
+    const method = [...ctx.methods].sort((a, b) => b.length - a.length).find(m => t.includes(' ' + m.toLowerCase() + ' ')) || '';
+    const strip = (x, words) => words.reduce((y, w) => y.replace(new RegExp(`(^|\\s)${w}(?=\\s|$)`, 'g'), ' '), ' ' + x + ' ').replace(/\s+/g, ' ').trim();
+    const re = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const withoutNames = () => clients.reduce((y, n) => {
+      const full = re(n.toLowerCase()), first = re(n.toLowerCase().split(/\s+/)[0]);
+      return y.replace(new RegExp(`(^|\\s)(${full}|${first})('s)?(?=\\s|$)`, 'g'), ' ');
+    }, t);
+
+    if (/^(yes|yeah|yep|yup|sure|do it|confirm|correct|ok|okay|go ahead|save it)( please)?$/.test(s)) return { intent: 'yes' };
+    if (/^(no|nope|cancel|stop|never ?mind|don't)$/.test(s)) return { intent: 'no' };
+    if (/^undo$/.test(s)) return { intent: 'undo' };
+    if (/\b(help|what can you do|how do i use you)\b/.test(s)) return { intent: 'help' };
+
+    const spendWords = /\b(spent|spend|expense|cost me|paid for|purchased|i bought)\b/.test(s);
+    if (amount && clients.length && /\b(paid|pay|payment|log|logged|received|got|gave|sent)\b/.test(s) && !/\bpaid for\b/.test(s))
+      return { intent: 'payment', amount, clients, method, deposit: /deposit/.test(s) };
+    if (amount && (spendWords || /\bbought\b/.test(s)) && !clients.length) {
+      const desc = strip(s.replace(/\$?\s?\d+(\.\d{1,2})?\s*(dollars|bucks)?/, ' '), ['i', 'just', 'spent', 'spend', 'add', 'an', 'a', 'expense', 'of', 'on', 'for', 'bought', 'i bought', 'purchased', 'paid', 'cost me', 'today', 'yesterday', 'some']);
+      return { intent: 'expense', amount, desc, category: L.guessCategory(s, ctx.categories), date: /yesterday/.test(s) ? 'yesterday' : 'today' };
+    }
+    if (/\b(check|checked|tick|have|got|bought|purchased|picked up)\b/.test(s) && !/\b(how|what|who)\b/.test(s) && (clients.length || /\bcheck(ed)? off\b/.test(s))) {
+      const item = strip(withoutNames(), ['check', 'checked', 'off', 'tick', 'mark', 'marked', 'as', 'i', 'i have', 'have', "i've", 'got', 'already', 'the', 'for', 'bought', 'purchased', 'picked up', 'picked', 'up', 'please', 'it', 'her', 'from', 'my', 'need', 'needed', 'to']);
+      return { intent: 'supply', clients, item, state: /bought|purchased|picked up/.test(s) ? 'bought' : 'have' };
+    }
+    if (clients.length && /\b(text|remind|reminder|message)\b/.test(s)) return { intent: 'text', clients };
+    if (clients.length && /\b(done|finished|complete|completed)\b/.test(s) && !/\bhow\b/.test(s)) return { intent: 'done', clients };
+    if (/\b(who'?s next|who is next|next (client|appointment|person))\b/.test(s)) return { intent: 'next' };
+    if (/\b(owe|owes|owing|unpaid|balance)\b/.test(s)) return { intent: 'owes', clients };
+    if (/\bhow much\b.*\bspen[dt]\b|\bmoney spent\b/.test(s)) return { intent: 'spent', period: PERIOD(s) };
+    if (/what'?s left|profit|left over|\bnet\b/.test(s)) return { intent: 'left', period: PERIOD(s) };
+    if (/\bhow much\b.*\b(make|made|earn|earned|bring|brought|income|money)\b|\bmoney made\b|\bhow did i do\b/.test(s)) return { intent: 'made', period: PERIOD(s) };
+    if (/what hair|what do i need|need to (buy|get)|shopping list|\bsupplies\b|what should i (buy|get)/.test(s)) return { intent: 'hair', clients };
+    if ((/\b(who'?s coming|what'?s on|my schedule|appointments?|booked|clients? (today|tomorrow|this week))\b/.test(s) || /\b(anything|anyone|who)\b.*\b(today|tomorrow|this week)\b/.test(s)) && !/\b(open|go to|show me the)\b/.test(s))
+      return { intent: 'schedule', period: /tomorrow/.test(s) ? 'tomorrow' : /week/.test(s) ? 'week' : 'today' };
+    if (/\b(open|go to|show|take me to)\b/.test(s)) { const p = PAGES_SAID.find(([, re]) => re.test(s)); if (p) return { intent: 'nav', page: p[0] }; }
+    return { intent: 'unknown' };
+  };
+
   L.time12 = t => {
     if (!t) return '';
     const [h, m] = t.split(':').map(Number);

@@ -59,4 +59,36 @@ assert.strictEqual(ev[0].notes, 'Bring frontal, glue');
 assert.strictEqual(L.time12('14:30'), '2:30 PM');
 assert.strictEqual(L.time12('09:00'), '9 AM');
 
+// voice / typed commands
+const ctx = { clients: ['Sarah Johnson', 'Jasmine Carter', 'Sarah Lee'], methods: ['Cash', 'Cash App', 'Zelle', 'Card', 'Other'], categories: ['Hair & Bundles', 'Lace', 'Hair Products', 'Other'] };
+const cmd = s => L.parseCommand(s, ctx);
+let c1 = cmd('Log 120 cash from Sarah Johnson');
+assert.deepStrictEqual([c1.intent, c1.amount, c1.method, c1.clients[0]], ['payment', 12000, 'Cash', 'Sarah Johnson']);
+c1 = cmd('Jasmine paid me $50 on Cash App as a deposit');
+assert.deepStrictEqual([c1.intent, c1.amount, c1.method, c1.deposit, c1.clients[0]], ['payment', 5000, 'Cash App', true, 'Jasmine Carter']);
+assert.deepStrictEqual(cmd('Sarah paid 1,200 dollars').clients, ['Sarah Johnson', 'Sarah Lee']); // ambiguous first name -> both
+assert.strictEqual(cmd('Sarah paid 1,200 dollars').amount, 120000);
+c1 = cmd('I spent 90 on 26 inch bundles');
+assert.deepStrictEqual([c1.intent, c1.amount, c1.desc, c1.category], ['expense', 9000, '26 inch bundles', 'Hair & Bundles']);
+assert.strictEqual(cmd('add an expense of $12.99 for edge control').category, 'Hair Products');
+assert.strictEqual(cmd('add an expense of $12.99 for edge control').amount, 1299);
+c1 = cmd('Check off the lace frontal for Sarah Johnson');
+assert.deepStrictEqual([c1.intent, c1.item, c1.state, c1.clients[0]], ['supply', 'lace frontal', 'have', 'Sarah Johnson']);
+c1 = cmd("I bought Jasmine's 26 inch bundles");
+assert.deepStrictEqual([c1.intent, c1.item, c1.state], ['supply', '26 inch bundles', 'bought']);
+assert.strictEqual(cmd('check off edge control').intent, 'supply');
+assert.strictEqual(cmd('text Jasmine a reminder').intent, 'text');
+assert.strictEqual(cmd('Jasmine is done').intent, 'done');
+assert.strictEqual(cmd("who's next?").intent, 'next');
+assert.deepStrictEqual(cmd('How much did I make this week?'), { intent: 'made', period: 'week' });
+assert.deepStrictEqual(cmd('how much did I spend this month'), { intent: 'spent', period: 'month' });
+assert.strictEqual(cmd("what's left this month").intent, 'left');
+assert.strictEqual(cmd('who still owes me').intent, 'owes');
+assert.strictEqual(cmd('what hair do I need for Jasmine').intent, 'hair');
+assert.deepStrictEqual(cmd('do I have anyone tomorrow'), { intent: 'schedule', period: 'tomorrow' });
+assert.deepStrictEqual(cmd('open expenses'), { intent: 'nav', page: 'expenses' });
+assert.strictEqual(cmd('yes').intent, 'yes');
+assert.strictEqual(cmd('write me a poem about cats').intent, 'unknown');
+assert.strictEqual(cmd("what's the weather").intent, 'unknown');
+
 console.log('All tests passed');

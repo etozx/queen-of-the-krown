@@ -51,6 +51,8 @@ const P = {
   trend: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
   alert: '<path d="M12 3 2 20h20z"/><path d="M12 9v5M12 17.5v.5"/>',
   sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  message: '<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9.5h8M8 12.5h5"/>',
 };
 const icon = n => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[n] || ''}</svg>`;
 function hydrate(root) {
@@ -62,23 +64,31 @@ const DEFAULT_CATEGORIES = ['Hair & Bundles', 'Wigs', 'Lace', 'Braiding Hair', '
 const DEFAULT_METHODS = ['Cash', 'Cash App', 'Zelle', 'Card', 'Other'];
 const sup = (name, d) => ({ name, cost: d * 100 });
 const defaultServices = () => [
-  { id: 'svc-knotless', name: 'Knotless Braids', price: 18000, supplies: [sup('Pre-stretched braiding hair', 25), sup('Hair mousse', 10), sup('Edge control', 8)] },
-  { id: 'svc-bussdown', name: '26" Buss Down', price: 25000, supplies: [sup('26-inch bundles', 150), sup('Lace frontal', 60), sup('Hair products', 15)] },
-  { id: 'svc-quickweave', name: 'Quick Weave', price: 12000, supplies: [sup('Bundles', 70), sup('Bonding glue', 8), sup('Wig cap', 3)] },
-  { id: 'svc-sewin', name: 'Sew-In', price: 20000, supplies: [sup('Bundles', 120), sup('Weaving thread', 5)] },
-  { id: 'svc-wig', name: 'Frontal Wig Install', price: 15000, supplies: [sup('Lace glue', 15), sup('Elastic band', 6), sup('Edge control', 8)] },
-  { id: 'svc-silkpress', name: 'Silk Press', price: 8500, supplies: [sup('Heat protectant', 12)] },
+  { id: 'svc-knotless', name: 'Knotless Braids', price: 18000, duration: 300, supplies: [sup('Pre-stretched braiding hair', 25), sup('Hair mousse', 10), sup('Edge control', 8)] },
+  { id: 'svc-bussdown', name: '26" Buss Down', price: 25000, duration: 180, supplies: [sup('26-inch bundles', 150), sup('Lace frontal', 60), sup('Hair products', 15)] },
+  { id: 'svc-quickweave', name: 'Quick Weave', price: 12000, duration: 120, supplies: [sup('Bundles', 70), sup('Bonding glue', 8), sup('Wig cap', 3)] },
+  { id: 'svc-sewin', name: 'Sew-In', price: 20000, duration: 180, supplies: [sup('Bundles', 120), sup('Weaving thread', 5)] },
+  { id: 'svc-wig', name: 'Frontal Wig Install', price: 15000, duration: 120, supplies: [sup('Lace glue', 15), sup('Elastic band', 6), sup('Edge control', 8)] },
+  { id: 'svc-silkpress', name: 'Silk Press', price: 8500, duration: 90, supplies: [sup('Heat protectant', 12)] },
 ];
+const DEFAULT_MSG = 'Hi {name}! Reminder from {business}: your {service} is {day} at {time}. Reply YES to confirm. See you soon!';
 const freshState = () => ({
-  v: 1, settings: { name: 'Queen of the Krown' }, services: defaultServices(),
+  v: 1, settings: { name: 'Queen of the Krown', reminderMsg: DEFAULT_MSG }, services: defaultServices(),
   categories: [...DEFAULT_CATEGORIES], methods: [...DEFAULT_METHODS],
   clients: [], appts: [], payments: [], expenses: [], stock: [],
 });
-const migrate = s => { const f = freshState(); for (const k in f) if (s[k] === undefined) s[k] = f[k]; return s; };
+const migrate = s => {
+  const f = freshState(); for (const k in f) if (s[k] === undefined) s[k] = f[k];
+  s.settings.reminderMsg ||= DEFAULT_MSG;
+  const defs = defaultServices();
+  s.services.forEach(x => { x.duration ||= defs.find(d => d.id === x.id)?.duration || 120; });
+  return s;
+};
 
 let S = null;
 let charts = [];
 let SH = {}; // state for the open sheet
+let rec = null; // active speech recognition
 const ui = { apptView: 'upcoming', day: null, month: null, incomeView: 'weekly', period: 'monthly', prepDays: 14, clientFilter: 'all', q: {}, payMethod: '', expCat: '' };
 
 // ---------- lookups ----------
@@ -101,6 +111,12 @@ const upcoming = days => {
 // Owes = finished (or past) appointments not fully paid. Today's not-yet-done bookings don't count yet.
 const owing = () => S.appts.filter(a => live(a) && (a.status === 'done' || a.date < today()) && bal(a) > 0).sort(sortAppt).reverse();
 
+// A client's appointments for a payment: past ones she still owes on first, then the nearest upcoming.
+const apptsToPay = clientId => {
+  const t = today(), near = a => Math.abs(L.parse(a.date) - L.parse(t));
+  return S.appts.filter(a => a.clientId === clientId && live(a))
+    .sort((x, y) => (bal(y) > 0) - (bal(x) > 0) || (y.date <= t) - (x.date <= t) || near(x) - near(y));
+};
 function getOrCreateClient(name) {
   let c = clientByName(name);
   if (!c) { c = { id: uid(), name: name.trim(), phone: '', email: '', notes: '', prefs: '', photos: [], created: today() }; S.clients.push(c); }
@@ -109,7 +125,7 @@ function getOrCreateClient(name) {
 function mkAppt(c, s, date, time) {
   return {
     id: uid(), clientId: c.id, serviceId: s?.id || '', serviceName: s?.name || 'Service', date, time: time || '',
-    price: s?.price || 0, status: 'booked', notes: '', source: 'manual',
+    price: s?.price || 0, duration: s?.duration || 120, status: 'booked', notes: '', source: 'manual',
     supplies: (s?.supplies || []).map(x => ({ id: uid(), name: x.name, cost: x.cost, state: 'need' })),
   };
 }
@@ -169,7 +185,7 @@ function openSheet(title, body, wide) {
   if (f && matchMedia('(pointer: fine)').matches) setTimeout(() => f.focus(), 60);
   return w.firstElementChild;
 }
-function closeSheet() { const w = $('#sheet'); w.hidden = true; w.innerHTML = ''; SH = {}; }
+function closeSheet() { rec?.abort(); const w = $('#sheet'); w.hidden = true; w.innerHTML = ''; SH = {}; }
 const formErr = (f, msg) => { const e = $('.err', f); e.textContent = msg; e.scrollIntoView({ block: 'nearest' }); return false; };
 function download(name, text, type) {
   const a = document.createElement('a');
@@ -236,9 +252,21 @@ function demoBanner() {
   return `<div class="banner">${icon('sparkle')}<div class="grow"><b>You're looking at sample data.</b> It's here so you can see how everything works. Items marked “Sample” aren't real.</div>
     <button class="btn sm dark" data-act="removeDemo">Remove sample data</button></div>`;
 }
+// Tap-to-text: opens her phone's Messages app with the reminder written; she presses send. Free, no texting service.
+function smsHref(a) {
+  const c = findClient(a.clientId), phone = (c?.phone || '').replace(/[^\d+]/g, '');
+  if (phone.replace('+', '').length < 7) return '';
+  const day = relDay(a.date);
+  const vars = { name: firstName(c.name), business: S.settings.name, service: a.serviceName, day: /^To/.test(day) ? day.toLowerCase() : fmtDate(a.date), time: a.time ? L.time12(a.time) : 'your booked time' };
+  const msg = S.settings.reminderMsg.replace(/\{(\w+)\}/g, (m, k) => vars[k] ?? m);
+  return `sms:${phone}?&body=${encodeURIComponent(msg)}`;
+}
 function reminders() {
   const out = [], t = today();
-  for (const a of upcoming(1)) out.push({ ic: 'clock', text: `<b>${esc(cName(a.clientId))}</b> is coming ${a.date === t ? 'today' : 'tomorrow'}${a.time ? ' at ' + L.time12(a.time) : ''} — ${esc(a.serviceName)}`, href: '#/appointments' });
+  for (const a of upcoming(1)) {
+    const sms = !a.reminded && smsHref(a);
+    out.push({ ic: sms ? 'message' : 'clock', text: `<b>${esc(cName(a.clientId))}</b> is coming ${a.date === t ? 'today' : 'tomorrow'}${a.time ? ' at ' + L.time12(a.time) : ''} — ${esc(a.serviceName)}${sms ? ' · <u>tap to text her a reminder</u>' : a.reminded ? ' · reminded ✓' : ''}`, href: sms || '#/appointments', remind: sms ? a.id : '' });
+  }
   for (const a of upcoming(7)) {
     const n = a.supplies.filter(s => s.state === 'need').length;
     if (n) out.push({ ic: 'scissors', text: `Get ${n} item${n > 1 ? 's' : ''} for <b>${esc(firstName(cName(a.clientId)))}</b> (${relDay(a.date)})`, href: '#/supplies' });
@@ -250,7 +278,7 @@ function reminders() {
 function reminderList(max = 6) {
   const r = reminders();
   if (!r.length) return empty('All caught up. Nothing needs your attention.');
-  return `<div class="list reminders">${r.slice(0, max).map(x => `<${x.href ? `a href="${x.href}"` : `div ${x.act}`} class="item click" style="text-decoration:none">${icon(x.ic)}<div class="grow small">${x.text}</div>${icon('right')}</${x.href ? 'a' : 'div'}>`).join('')}
+  return `<div class="list reminders">${r.slice(0, max).map(x => `<${x.href ? `a href="${x.href}"${x.remind ? ` data-remind="${x.remind}"` : ''}` : `div ${x.act}`} class="item click" style="text-decoration:none">${icon(x.ic)}<div class="grow small">${x.text}</div>${icon('right')}</${x.href ? 'a' : 'div'}>`).join('')}
     ${r.length > max ? `<div class="tiny muted mt">+ ${r.length - max} more</div>` : ''}</div>`;
 }
 function apptRow(a, opts = {}) {
@@ -261,10 +289,11 @@ function apptRow(a, opts = {}) {
       <div class="spread"><a href="#/client/${a.clientId}" class="title" style="font-weight:600;text-decoration:none">${esc(cName(a.clientId))}</a><span class="amt num">${money(a.price)}</span></div>
       <div class="meta small muted">${a.time ? L.time12(a.time) + ' · ' : ''}${esc(a.serviceName)}${a.notes ? ' · ' + esc(a.notes) : ''}</div>
       <div class="row mt" style="margin-top:6px">${a.status !== 'booked' ? chip(a.status, APPT_LABEL[a.status]) : ''}${live(a) ? chip(st, PAY_LABEL[st] + (st !== 'paid' && st !== 'unpaid' ? ` · ${money(b)} left` : '')) : ''}
-        ${a.status === 'booked' && need ? chip('need', `${need} to buy`) : ''}${demoChip(a)}</div>
+        ${a.status === 'booked' && need ? chip('need', `${need} to buy`) : ''}${a.reminded && a.status === 'booked' ? chip('have', 'Reminded') : ''}${demoChip(a)}</div>
       ${opts.noActions ? '' : `<div class="actions">
         ${live(a) && b > 0 ? `<button class="btn sm gold" data-act="logPayment" data-appt="${a.id}">${icon('wallet')}Log payment</button>` : ''}
         ${a.status === 'booked' && a.date <= today() ? `<button class="btn sm ghost" data-act="markDone" data-id="${a.id}">${icon('check')}Done</button>` : ''}
+        ${a.status === 'booked' && a.date >= today() ? (smsHref(a) ? `<a class="btn sm ghost" href="${smsHref(a)}" data-remind="${a.id}">${icon('message')}${a.reminded ? 'Text again' : 'Text reminder'}</a>` : `<button class="btn sm ghost" data-act="editClient" data-id="${a.clientId}">${icon('message')}Add phone to text</button>`) : ''}
         ${a.status === 'booked' && a.supplies.length ? `<a class="btn sm ghost" href="#/supplies">${icon('scissors')}Hair needed</a>` : ''}
         <button class="btn sm ghost" data-act="editAppt" data-id="${a.id}">${icon('edit')}Edit</button></div>`}
     </div></div>`;
@@ -356,7 +385,32 @@ PAGES.appointments = {
   title: () => 'Appointments',
   render() {
     const t = today(), v = ui.apptView;
-    const tabs = [['upcoming', 'Coming up'], ['day', 'Day'], ['month', 'Calendar'], ['past', 'Past']];
+    const tabs = [['upcoming', 'Coming up'], ['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ['past', 'Past']];
+    if (v === 'week') {
+      const ws = L.weekStart(ui.week || t), days = [...Array(7)].map((_, i) => L.addDays(ws, i));
+      const list = S.appts.filter(a => a.date >= ws && a.date <= days[6] && live(a));
+      const mins = a => (a.time ? +a.time.slice(0, 2) * 60 + +a.time.slice(3, 5) : null);
+      let startH = 8, endH = 20;
+      for (const a of list) if (mins(a) != null) { startH = Math.min(startH, Math.floor(mins(a) / 60)); endH = Math.max(endH, Math.ceil((mins(a) + (a.duration || 120)) / 60)); }
+      endH = Math.min(endH, 24);
+      const H = 52, hours = [...Array(endH - startH)].map((_, i) => startH + i);
+      const head = d => { const x = L.parse(d), untimed = list.filter(a => a.date === d && mins(a) == null);
+        return `<div class="wk-head ${d === t ? 'today' : ''}"><span>${DOW[x.getDay()]}</span><b>${x.getDate()}</b>${untimed.map(a => `<span class="wk-chip" data-act="editAppt" data-id="${a.id}">${esc(firstName(cName(a.clientId)))}</span>`).join('')}</div>`; };
+      const col = d => `<div class="wk-col ${d === t ? 'today' : ''}" style="height:${hours.length * H}px" data-act="weekSlot" data-d="${d}" data-start="${startH}" aria-label="${fmtDate(d)}">
+        ${list.filter(a => a.date === d && mins(a) != null).map(a => `<div class="wk-ev ${a.status === 'done' ? 'done' : payStatus(a)}" style="top:${(mins(a) - startH * 60) / 60 * H}px;height:${Math.max(28, (a.duration || 120) / 60 * H - 3)}px" data-act="editAppt" data-id="${a.id}" role="button" tabindex="0">
+          <b>${esc(firstName(cName(a.clientId)))}</b><span>${L.time12(a.time)} · ${esc(a.serviceName)}</span></div>`).join('')}</div>`;
+      const end = L.parse(days[6]), st = L.parse(ws);
+      const body = `<div class="spread" style="margin-bottom:10px"><button class="icon-btn" data-act="weekNav" data-n="-1" aria-label="Previous week">${icon('left')}</button>
+        <div class="section-title" style="font-size:21px">${MON[st.getMonth()]} ${st.getDate()} – ${MON[end.getMonth()]} ${end.getDate()}</div>
+        <div class="row" style="gap:4px"><button class="btn sm ghost" data-act="weekNav" data-n="0">This week</button><button class="icon-btn" data-act="weekNav" data-n="1" aria-label="Next week">${icon('right')}</button></div></div>
+        <div class="scroll-x"><div class="week"><div></div>${days.map(head).join('')}
+          <div class="wk-times" style="height:${hours.length * H}px">${hours.map(h => `<span style="top:${(h - startH) * H}px">${L.time12(String(h).padStart(2, '0') + ':00')}</span>`).join('')}</div>
+          ${days.map(col).join('')}</div></div>
+        <p class="tiny muted">Tap an empty spot to book that time. Green = paid, amber = deposit or part paid, gold = not paid yet.</p>`;
+      return `<div class="spread" style="margin-bottom:14px"><div class="tabs">${tabs.map(([k, l]) => `<button class="${v === k ? 'on' : ''}" data-act="apptView" data-v="${k}">${l}</button>`).join('')}</div>
+        <div class="row"><button class="btn ghost" data-act="importBooksy">${icon('upload')}Import from Booksy</button><button class="btn dark" data-act="addAppt">${icon('plus')}Add appointment</button></div></div>
+        <div class="card">${body}</div>`;
+    }
     let body = '';
     if (v === 'upcoming') {
       const list = S.appts.filter(a => a.date >= t && a.status === 'booked').sort(sortAppt);
@@ -622,6 +676,11 @@ PAGES.settings = {
         <li><b>Import a file</b> — if you can download appointments from Booksy (or another calendar) as a <b>CSV spreadsheet</b> or a <b>calendar file (.ics)</b>, import it here. You can check every row before it's added, and repeats are skipped.</li>
         <li><b>Ask Booksy support</b> if API access is available for your account. If they give you one, this app can be extended to use it.</li></ul>
       <button class="btn dark sm" data-act="importBooksy">${icon('upload')}Import appointments file</button></div>
+    <div class="card"><h2>Text Reminders</h2>
+      <p class="small muted">Tapping “Text reminder” opens your phone's Messages app with this already written — you just press send. It's free and comes from your own number. Clients need a phone number saved.</p>
+      <form class="form" data-form="reminderMsg"><textarea class="input" name="msg" aria-label="Reminder message">${esc(S.settings.reminderMsg)}</textarea>
+        <p class="tiny muted">These fill in by themselves: {name} {service} {day} {time} {business}</p>
+        <div class="row"><button class="btn dark sm">Save message</button><button type="button" class="btn ghost sm" data-act="resetMsg">Use the default</button></div></form></div>
     <div class="grid cols-2-even">
       <div class="card"><h2>Expense Categories</h2><div class="mt">${tagList('categories', 'category')}</div></div>
       <div class="card"><h2>Payment Methods</h2><div class="mt">${tagList('methods', 'method')}</div></div>
@@ -681,7 +740,7 @@ function paymentSheet({ apptId, clientId, id } = {}) {
   };
   const fillAppts = () => {
     const c = clientByName(f.client.value);
-    const list = c ? S.appts.filter(a => a.clientId === c.id && live(a)).sort((x, y) => (bal(y) > 0) - (bal(x) > 0) || Math.abs(L.parse(x.date) - L.parse(today())) - Math.abs(L.parse(y.date) - L.parse(today()))) : [];
+    const list = c ? apptsToPay(c.id) : [];
     const prev = f.appt.value, keep = list.find(a => a.id === (prev || a0?.id));
     f.appt.innerHTML = list.map(a => `<option value="${a.id}">${relDay(a.date)} · ${esc(a.serviceName)} · ${bal(a) ? money(bal(a)) + ' left' : 'paid'}</option>`).join('') + `<option value="">New / no appointment</option>`;
     f.appt.value = keep ? keep.id : list[0] && bal(list[0]) > 0 ? list[0].id : '';
@@ -703,11 +762,19 @@ FORMS.payment = f => {
   if (!(amount > 0)) return formErr(f, 'Type how much money you received, like 120 or 85.50.');
   if (f.total.value.trim() && !(total >= 0)) return formErr(f, 'The total price should be a number, like 180.');
   if (!f.date.value) return formErr(f, 'Pick the date you were paid.');
-  const c = getOrCreateClient(name), svc = findSvc(f.service.value);
-  let a = findAppt(f.appt.value);
+  const { a, c } = recordPayment({ name, apptId: f.appt.value, serviceId: f.service.value, total, amount, method: f.method.value, date: f.date.value,
+    deposit: f.kind.value === 'A deposit', note: f.note.value.trim(), editId: f.dataset.id });
+  closeSheet(); refresh();
+  const left = bal(a);
+  toast(`Saved ${money(amount)} ${f.method.value} from ${firstName(c.name)}${left ? ` · ${money(left)} still owed` : ' · paid in full'}`);
+};
+// Shared by the payment form and the assistant. `total` is NaN when unknown.
+function recordPayment({ name, apptId, serviceId, total, amount, method, date, deposit, note = '', editId }) {
+  const c = getOrCreateClient(name), svc = findSvc(serviceId);
+  let a = findAppt(apptId);
   if (!a) {
     // No booking yet: make a same-day appointment so her history and "owes" stay correct.
-    a = mkAppt(c, svc, f.date.value, '');
+    a = mkAppt(c, svc, date, '');
     a.price = total > 0 ? total : amount;
     a.supplies.forEach(s => { s.state = 'have'; });
     a.status = 'done';
@@ -716,14 +783,13 @@ FORMS.payment = f => {
     if (total >= 0) a.price = total;
     if (svc && svc.id !== a.serviceId) { a.serviceId = svc.id; a.serviceName = svc.name; }
   }
-  const fields = { apptId: a.id, clientId: c.id, clientName: c.name, serviceName: a.serviceName, amount, method: f.method.value, date: f.date.value, deposit: f.kind.value === 'A deposit', note: f.note.value.trim() };
-  const p = S.payments.find(x => x.id === f.dataset.id);
+  const fields = { apptId: a.id, clientId: c.id, clientName: c.name, serviceName: a.serviceName, amount, method, date, deposit: !!deposit, note };
+  const p = S.payments.find(x => x.id === editId);
   if (p) Object.assign(p, fields); else S.payments.push({ id: uid(), ...fields });
   if (L.payStatus(a, S.payments) === 'paid' && a.status === 'booked' && a.date <= today()) a.status = 'done';
-  save(); closeSheet(); refresh();
-  const left = bal(a);
-  toast(`Saved ${money(amount)} ${fields.method} from ${firstName(c.name)}${left ? ` · ${money(left)} still owed` : ' · paid in full'}`);
-};
+  save();
+  return { a, c };
+}
 
 function expenseSheet(id) {
   const e = id ? S.expenses.find(x => x.id === id) : null;
@@ -761,14 +827,17 @@ function syncSupplies() {
 }
 const redrawSupplies = () => { $('#supRows').innerHTML = supplyRows(); };
 
-function apptSheet({ id, clientId, date } = {}) {
+const hoursField = mins => `<label class="field"><span>How long (hours)</span><input class="input" name="hours" inputmode="decimal" value="${(mins || 120) / 60}"></label>`;
+const readHours = f => { const h = parseFloat(f.hours.value); return h > 0 && h <= 24 ? Math.round(h * 60) : NaN; };
+function apptSheet({ id, clientId, date, time } = {}) {
   const a = id ? findAppt(id) : null;
   openSheet(a ? 'Edit Appointment' : 'Add Appointment', `<form class="form" data-form="appt" data-id="${a?.id || ''}" autocomplete="off">
     <label class="field"><span>Client</span><input class="input" name="client" list="clientsDL" value="${esc(a ? cName(a.clientId) : clientId ? cName(clientId) : '')}" placeholder="Client name" autofocus required>${clientsDatalist()}</label>
     <div class="field-row"><label class="field"><span>Hairstyle / service</span><select class="input" name="service">${serviceOptions(a?.serviceId)}</select></label>
       <label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${a ? dollars(a.price) : ''}" placeholder="$0"></label></div>
     <div class="field-row"><label class="field"><span>Date</span><input class="input" type="date" name="date" value="${a?.date || date || today()}" required></label>
-      <label class="field"><span>Time</span><input class="input" type="time" name="time" value="${a?.time || ''}"></label></div>
+      <label class="field"><span>Time</span><input class="input" type="time" name="time" value="${a?.time || time || ''}"></label></div>
+    ${hoursField(a?.duration)}
     ${a ? `<label class="field"><span>Status</span><select class="input" name="status">${Object.entries(APPT_LABEL).map(([k, l]) => `<option value="${k}" ${a.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}
     <label class="field"><span>Notes (optional)</span><input class="input" name="notes" value="${esc(a?.notes || '')}" placeholder="e.g. wants curly ends, color 1B"></label>
     ${supplyEditor()}
@@ -780,7 +849,7 @@ function apptSheet({ id, clientId, date } = {}) {
   const f = $('#sheet form');
   f.service.addEventListener('change', () => {
     const s = findSvc(f.service.value); if (!s) return;
-    f.price.value = dollars(s.price);
+    f.price.value = dollars(s.price); f.hours.value = s.duration / 60;
     SH.supplies = s.supplies.map(x => ({ id: uid(), name: x.name, cost: x.cost, state: 'need' })); redrawSupplies();
   });
 }
@@ -790,11 +859,13 @@ FORMS.appt = f => {
   if (!name) return formErr(f, "Type the client's name.");
   if (!(price >= 0)) return formErr(f, 'Price should be a number, like 180.');
   if (!f.date.value) return formErr(f, 'Pick a date.');
+  const duration = readHours(f);
+  if (!duration) return formErr(f, 'How long should be hours, like 2 or 1.5.');
   const c = getOrCreateClient(name), s = findSvc(f.service.value);
   let a = findAppt(f.dataset.id);
   if (!a) { a = mkAppt(c, s, f.date.value, f.time.value); S.appts.push(a); }
   Object.assign(a, {
-    clientId: c.id, serviceId: s?.id || '', serviceName: s?.name || a.serviceName || 'Service', date: f.date.value, time: f.time.value, price,
+    clientId: c.id, serviceId: s?.id || '', serviceName: s?.name || a.serviceName || 'Service', date: f.date.value, time: f.time.value, price, duration,
     notes: f.notes.value.trim(), status: f.status ? f.status.value : a.status,
     supplies: SH.supplies.filter(x => x.name.trim()).map(x => ({ id: x.id || uid(), name: x.name.trim(), cost: x.cost || 0, state: x.state || 'need' })),
   });
@@ -832,6 +903,7 @@ function serviceSheet(id) {
   openSheet(s ? 'Edit Service' : 'Add Service', `<form class="form" data-form="service" data-id="${s?.id || ''}">
     <div class="field-row"><label class="field"><span>Service name</span><input class="input" name="name" value="${esc(s?.name || '')}" placeholder="e.g. Goddess Locs" required></label>
       <label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${s ? dollars(s.price) : ''}" placeholder="$0" required></label></div>
+    ${hoursField(s?.duration)}
     ${supplyEditor()}
     <p class="tiny muted">Changes apply to new appointments. Existing appointments keep their own list.</p>
     <p class="err" role="alert"></p>
@@ -845,9 +917,11 @@ FORMS.service = f => {
   const name = f.name.value.trim(), price = L.toCents(f.price.value);
   if (!name) return formErr(f, 'Type a service name.');
   if (!(price >= 0)) return formErr(f, 'Price should be a number, like 180.');
+  const duration = readHours(f);
+  if (!duration) return formErr(f, 'How long should be hours, like 2 or 1.5.');
   let s = findSvc(f.dataset.id);
   if (!s) { s = { id: uid() }; S.services.push(s); }
-  Object.assign(s, { name, price, supplies: SH.supplies.filter(x => x.name.trim()).map(x => ({ name: x.name.trim(), cost: x.cost || 0 })) });
+  Object.assign(s, { name, price, duration, supplies: SH.supplies.filter(x => x.name.trim()).map(x => ({ name: x.name.trim(), cost: x.cost || 0 })) });
   save(); closeSheet(); refresh(); toast(`Saved ${name}`);
 };
 
@@ -906,23 +980,217 @@ FORMS.addTag = f => {
   if (!v || S[k].some(x => x.toLowerCase() === v.toLowerCase())) return toast('That one is already there.', 'error');
   S[k].push(v); save(); refresh();
 };
+FORMS.reminderMsg = f => {
+  const v = f.msg.value.trim(); if (!v) return toast('Write a message first.', 'error');
+  S.settings.reminderMsg = v; save(); toast('Reminder message saved');
+};
 FORMS.bizName = f => {
   const v = f.name.value.trim(); if (!v) return;
   S.settings.name = v; $('#brandName').textContent = v; save(); toast('Business name saved');
 };
 
 // =====================================================================
+// ASSISTANT — voice or typed commands, only about this app (see L.parseCommand)
+// =====================================================================
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const chat = [];
+let pending = null, spokeLast = false;
+const HELP = `Hi! I can help with your business. Try saying:<ul class="small" style="margin:6px 0 0;padding-left:18px">
+  <li>“Who's next?” · “Who's coming tomorrow?”</li><li>“Log 120 cash from Sarah” · “Jasmine paid 50 deposit on Cash App”</li>
+  <li>“Check off lace frontal for Sarah” · “What hair do I need?”</li><li>“I spent 45 on edge control”</li>
+  <li>“How much did I make this week?” · “Who owes me?”</li><li>“Text Sarah a reminder” · “Sarah is done”</li></ul>`;
+
+function assistantSheet(listen) {
+  openSheet('Assistant', `<div class="chat" id="chat" aria-live="polite"></div>
+    <form class="ask" data-form="ask" autocomplete="off">
+      <button type="button" class="mic" data-act="listen" aria-label="Talk">${icon('mic')}</button>
+      <input class="input" name="q" placeholder="Type or tap the mic…" aria-label="Ask the assistant">
+      <button class="btn dark sm">Send</button></form>
+    <p class="tiny muted" style="margin:8px 0 0">I only help with ${esc(S.settings.name)}. ${SR ? 'Your voice is turned into text by your phone or browser.' : 'Voice needs Chrome or Safari — you can type instead.'}</p>`);
+  if (!chat.length) chat.push({ who: 'bot', html: HELP });
+  drawChat();
+  if (listen && SR) startListening();
+}
+function drawChat() {
+  const el = $('#chat'); if (!el) return;
+  el.innerHTML = chat.slice(-30).map(m => `<div class="msg ${m.who}">${m.html}${m.buttons ? `<div class="row" style="margin-top:8px">${m.buttons.map((b, j) => `<button class="btn sm ${j ? 'ghost' : 'gold'}" data-act="chatBtn" data-i="${chat.indexOf(m)}" data-j="${j}">${esc(b.label)}</button>`).join('')}</div>` : ''}</div>`).join('');
+  el.scrollTop = el.scrollHeight;
+}
+function botSay(html, buttons) {
+  chat.push({ who: 'bot', html, buttons }); drawChat();
+  if (spokeLast && window.speechSynthesis) {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(html.replace(/<li>/g, '. ').replace(/<[^>]+>/g, ' ').replace(/✓/g, '')); u.rate = 1.05; speechSynthesis.speak(u);
+  }
+}
+const clearButtons = () => chat.forEach(m => { m.buttons = null; });
+function confirmThen(html, run) {
+  pending = run;
+  botSay(html, [{ label: 'Yes, save it', run: () => { pending = null; run(); } }, { label: 'No', run: () => { pending = null; botSay("Okay, I didn't save anything."); } }]);
+}
+const undoBtn = undo => [{ label: 'Undo', run: () => { undo(); save(); refresh(); botSay('Undone.'); } }];
+function startListening() {
+  if (!SR) return botSay("Voice isn't available in this browser. Type instead, or open the app in Chrome or Safari.");
+  if (rec) return rec.stop();
+  const mic = $('#sheet .mic'), inp = $('#sheet [name=q]');
+  let final = '';
+  rec = new SR(); rec.lang = 'en-US'; rec.interimResults = true;
+  rec.onresult = e => { const txt = [...e.results].map(r => r[0].transcript).join(''); if (inp) inp.value = txt; if (e.results[e.results.length - 1].isFinal) final = txt; };
+  rec.onerror = e => {
+    if (/not-allowed/.test(e.error)) botSay('Please allow the microphone so I can hear you (check your browser settings).');
+    else if (e.error === 'no-speech') botSay("I didn't hear anything. Tap the mic and try again.");
+  };
+  rec.onend = () => { mic?.classList.remove('on'); rec = null; if (final) { if (inp) inp.value = ''; handleAsk(final, true); } };
+  mic?.classList.add('on');
+  try { rec.start(); } catch { rec = null; mic?.classList.remove('on'); }
+}
+function pickClient(cmd, again) {
+  const list = cmd.clients.map(clientByName).filter(Boolean);
+  if (list.length <= 1) return list[0] || null;
+  const t = today(), open = list.filter(c => S.appts.some(a => a.clientId === c.id && live(a) && (bal(a) > 0 || (a.status === 'booked' && a.date >= t))));
+  if (open.length === 1) return open[0];
+  botSay('Which one do you mean?', list.slice(0, 4).map(c => ({ label: c.name, run: () => again({ ...cmd, clients: [c.name] }) })));
+  return undefined; // asked
+}
+const periodRange = p => { const t = today(); return p === 'yesterday' ? [L.addDays(t, -1), L.addDays(t, -1)] : L.ranges(t)[p]; };
+const PERIOD_WORD = { today: 'today', yesterday: 'yesterday', week: 'this week', month: 'this month', year: 'this year' };
+const STOP = new Set(['the', 'a', 'an', 'of', 'and', 'inch', 'some', 'my', 'her']);
+
+const INTENT = {
+  help: () => botSay(HELP),
+  yes: () => { if (!pending) return botSay("There's nothing waiting for a yes. What do you need?"); const run = pending; pending = null; clearButtons(); run(); },
+  no: () => { pending = null; clearButtons(); botSay('Okay.'); },
+  undo: () => botSay('Tap the Undo button under what you want to undo.'),
+  payment: cmd => {
+    const c = pickClient(cmd, INTENT.payment); if (!c) return;
+    const open = apptsToPay(c.id).find(a => bal(a) > 0);
+    const method = cmd.method || 'Cash', after = open ? Math.max(0, bal(open) - cmd.amount) : 0;
+    confirmThen(`Log <b>${money(cmd.amount)} ${esc(method)}</b>${cmd.deposit ? ' deposit' : ''} from <b>${esc(c.name)}</b>${open ? ` for ${esc(open.serviceName)} (${relDay(open.date)}) — ${after ? `she'll still owe ${money(after)}` : 'paid in full'}` : ''}?`, () => {
+      const { a } = recordPayment({ name: c.name, apptId: open?.id, serviceId: open?.serviceId, total: open ? open.price : NaN, amount: cmd.amount, method, date: today(), deposit: cmd.deposit });
+      refresh(); botSay(`Saved ✓ ${money(cmd.amount)} from ${esc(firstName(c.name))}.${bal(a) ? ` ${money(bal(a))} still owed.` : ''}`);
+    });
+  },
+  expense: cmd => {
+    const date = cmd.date === 'yesterday' ? L.addDays(today(), -1) : today();
+    confirmThen(`Add <b>${money(cmd.amount)}</b>${cmd.desc ? ` for ${esc(cmd.desc)}` : ''} under <b>${esc(cmd.category)}</b> (${relDay(date).toLowerCase()})?`, () => {
+      S.expenses.push({ id: uid(), amount: cmd.amount, category: cmd.category, desc: cmd.desc, date, receipt: '' });
+      save(); refresh(); botSay(`Saved ✓ ${money(cmd.amount)} expense. You can change the category on the Expenses page.`);
+    });
+  },
+  supply: cmd => {
+    const c = cmd.clients.length ? pickClient(cmd, INTENT.supply) : null;
+    if (c === undefined) return;
+    const appts = upcoming(60).filter(a => (!c || a.clientId === c.id) && a.supplies.length);
+    if (!appts.length) return botSay(c ? `${esc(firstName(c.name))} has no upcoming appointment with a hair list.` : 'There are no upcoming appointments with hair lists.');
+    if (/^(everything|all|all of it|it all|all items|her list)$/.test(cmd.item)) {
+      const a = appts[0], before = a.supplies.map(s => s.state);
+      a.supplies.forEach(s => { if (s.state === 'need') s.state = cmd.state; }); save(); refresh();
+      return botSay(`Checked off everything ✓ for ${esc(cName(a.clientId))} (${relDay(a.date)}).`, undoBtn(() => a.supplies.forEach((s, i) => { s.state = before[i]; })));
+    }
+    const words = cmd.item.split(' ').filter(w => w.length > 1 && !STOP.has(w));
+    if (!words.length) return botSay(`What should I check off? Her list: ${appts[0].supplies.map(s => esc(s.name)).join(', ')}.`);
+    let best = null, score = 0;
+    for (const a of appts) for (const s of a.supplies) {
+      const n = s.name.toLowerCase(), sc = words.filter(w => n.includes(w) || n.includes(w.replace(/s$/, ''))).length;
+      if (sc > score) { best = { a, s }; score = sc; }
+    }
+    if (!best) return botSay(`I couldn't find “${esc(cmd.item)}” on ${c ? esc(firstName(c.name)) + "'s" : 'any upcoming'} list. ${c ? `Her list: ${appts[0].supplies.map(s => esc(s.name)).join(', ')}.` : ''}`);
+    const prev = best.s.state; best.s.state = cmd.state; save(); refresh();
+    const left = best.a.supplies.filter(s => s.state === 'need').length;
+    botSay(`Checked off ✓ <b>${esc(best.s.name)}</b> for ${esc(cName(best.a.clientId))} (${relDay(best.a.date)}). ${left ? `${left} item${left > 1 ? 's' : ''} still needed.` : 'Her hair is all ready!'}`, undoBtn(() => { best.s.state = prev; }));
+  },
+  done: cmd => {
+    const c = pickClient(cmd, INTENT.done); if (!c) return;
+    const a = S.appts.filter(x => x.clientId === c.id && x.status === 'booked' && x.date <= today()).sort(sortAppt).pop();
+    if (!a) return botSay(`${esc(firstName(c.name))} has no booked appointment today to mark done.`);
+    a.status = 'done'; save(); refresh();
+    const b = bal(a);
+    botSay(`Marked ${esc(firstName(c.name))}'s ${esc(a.serviceName)} done ✓.${b ? ` She still owes ${money(b)}.` : ''}`,
+      [...(b ? [{ label: 'Log her payment', run: () => paymentSheet({ apptId: a.id }) }] : []), ...undoBtn(() => { a.status = 'booked'; })]);
+  },
+  text: cmd => {
+    const c = pickClient(cmd, INTENT.text); if (!c) return;
+    const a = S.appts.filter(x => x.clientId === c.id && x.status === 'booked' && x.date >= today()).sort(sortAppt)[0];
+    if (!a) return botSay(`${esc(firstName(c.name))} has no upcoming appointment to remind her about.`);
+    const href = smsHref(a);
+    if (!href) return botSay(`I don't have ${esc(firstName(c.name))}'s phone number yet.`, [{ label: 'Add her number', run: () => clientSheet(c.id) }]);
+    botSay(`Your reminder for ${esc(firstName(c.name))} (${relDay(a.date)}) is ready. <a class="btn sm gold" style="margin-top:8px" href="${href}" data-remind="${a.id}">${icon('message')}Open Messages</a>`);
+  },
+  next: () => {
+    const a = upcoming(60)[0];
+    if (!a) return botSay('Nobody is booked yet.');
+    const need = a.supplies.filter(s => s.state === 'need');
+    botSay(`Next is <b>${esc(cName(a.clientId))}</b>, ${relDay(a.date).toLowerCase()}${a.time ? ' at ' + L.time12(a.time) : ''} for ${esc(a.serviceName)} (${money(a.price)}). ${paid(a) ? `${money(paid(a))} paid, ${money(bal(a))} left.` : 'Nothing paid yet.'} ${need.length ? `You still need: ${need.map(s => esc(s.name)).join(', ')}.` : 'Her hair is ready.'}`);
+  },
+  made: cmd => {
+    if (cmd.period) return botSay(`You made <b>${money(L.sum(S.payments, ...periodRange(cmd.period)))}</b> ${PERIOD_WORD[cmd.period]}.`);
+    const R = L.ranges(today());
+    botSay(`You made <b>${money(L.sum(S.payments, ...R.today))}</b> today, <b>${money(L.sum(S.payments, ...R.week))}</b> this week, and <b>${money(L.sum(S.payments, ...R.month))}</b> this month.`);
+  },
+  spent: cmd => { const p = cmd.period || 'month'; botSay(`You spent <b>${money(L.sum(S.expenses, ...periodRange(p)))}</b> ${PERIOD_WORD[p]}.`); },
+  left: cmd => {
+    const p = cmd.period || 'month', r = periodRange(p), m = L.sum(S.payments, ...r), s = L.sum(S.expenses, ...r);
+    botSay(`${PERIOD_WORD[p][0].toUpperCase() + PERIOD_WORD[p].slice(1)} you made ${money(m)} and spent ${money(s)}, so <b>${money(m - s)}</b> is left.`);
+  },
+  owes: cmd => {
+    const c = cmd.clients.length ? pickClient(cmd, INTENT.owes) : null; if (c === undefined) return;
+    const list = owing().filter(a => !c || a.clientId === c.id);
+    if (!list.length) return botSay(c ? `${esc(firstName(c.name))} doesn't owe you anything.` : 'Nobody owes you anything. 👑');
+    botSay(`${list.slice(0, 5).map(a => `<b>${esc(cName(a.clientId))}</b> owes ${money(bal(a))} (${esc(a.serviceName)}, ${relDay(a.date)})`).join('<br>')}${list.length > 5 ? `<br>…and ${list.length - 5} more on the Payments page.` : ''}`);
+  },
+  hair: cmd => {
+    const c = cmd.clients.length ? pickClient(cmd, INTENT.hair) : null; if (c === undefined) return;
+    if (c) {
+      const a = upcoming(60).find(x => x.clientId === c.id);
+      if (!a) return botSay(`${esc(firstName(c.name))} has no upcoming appointment.`);
+      const need = a.supplies.filter(s => s.state === 'need'), have = a.supplies.filter(s => s.state !== 'need');
+      return botSay(`For ${esc(firstName(c.name))}'s ${esc(a.serviceName)} (${relDay(a.date)}): ${need.length ? `you need <b>${need.map(s => esc(s.name)).join(', ')}</b>` : 'everything is ready'}${have.length ? `; you have ${have.map(s => esc(s.name)).join(', ')}` : ''}.`);
+    }
+    const need = upcoming(7).flatMap(a => a.supplies.filter(s => s.state === 'need').map(s => ({ ...s, who: firstName(cName(a.clientId)) })));
+    if (!need.length) return botSay('You have everything for the next 7 days. 👑');
+    botSay(`For the next 7 days you need:<br>${need.map(s => `• ${esc(s.name)} (for ${esc(s.who)})`).join('<br>')}<br>About <b>${money(need.reduce((t, s) => t + s.cost, 0))}</b> total.`);
+  },
+  schedule: cmd => {
+    const t = today(), [from, to] = cmd.period === 'tomorrow' ? [L.addDays(t, 1), L.addDays(t, 1)] : cmd.period === 'week' ? L.ranges(t).week : [t, t];
+    const list = S.appts.filter(a => a.status === 'booked' && a.date >= from && a.date <= to).sort(sortAppt);
+    const when = cmd.period === 'tomorrow' ? 'tomorrow' : cmd.period === 'week' ? 'this week' : 'today';
+    if (!list.length) return botSay(`Nobody is booked ${when}.`);
+    botSay(`${list.length} booked ${when}:<br>${list.map(a => `• ${cmd.period === 'week' ? relDay(a.date) + ' ' : ''}${a.time ? L.time12(a.time) + ' — ' : ''}<b>${esc(cName(a.clientId))}</b>, ${esc(a.serviceName)}`).join('<br>')}`);
+  },
+  nav: cmd => { closeSheet(); location.hash = '#/' + cmd.page; },
+  unknown: () => botSay(`Sorry, I can only help with ${esc(S.settings.name)}: clients, appointments, payments, expenses and hair supplies. Try “Who's next?” or “Log 120 cash from Sarah”. Say “help” for more.`),
+};
+function handleAsk(text, spoken) {
+  text = String(text).trim(); if (!text) return;
+  spokeLast = !!spoken;
+  const cmd = L.parseCommand(text, { clients: S.clients.map(c => c.name), methods: S.methods, categories: S.categories });
+  if (cmd.intent !== 'yes' && cmd.intent !== 'no') { pending = null; clearButtons(); }
+  chat.push({ who: 'me', html: esc(text) });
+  (INTENT[cmd.intent] || INTENT.unknown)(cmd);
+}
+FORMS.ask = f => { const q = f.q.value; f.q.value = ''; handleAsk(q, false); };
+
+// =====================================================================
 // ACTIONS
 // =====================================================================
 const ACT = {
   closeSheet,
+  assistant: () => assistantSheet(true),
+  listen: () => startListening(),
+  chatBtn: d => { const m = chat[+d.i], b = m?.buttons?.[+d.j]; if (!b) return; m.buttons = null; drawChat(); b.run(); },
+  weekNav: d => { ui.week = +d.n ? L.addDays(ui.week || today(), 7 * +d.n) : null; refresh(); },
+  weekSlot: (d, el, e) => {
+    const y = e.clientY - el.getBoundingClientRect().top, m = Math.round((+d.start * 60 + y / 52 * 60) / 30) * 30;
+    apptSheet({ date: d.d, time: `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}` });
+  },
+  resetMsg: () => { S.settings.reminderMsg = DEFAULT_MSG; save(); refresh(); toast('Default message restored'); },
   openMenu: () => document.body.classList.add('menu-open'),
   closeMenu: () => document.body.classList.remove('menu-open'),
   logPayment: d => paymentSheet({ apptId: d.appt, clientId: d.client }),
   editPayment: d => paymentSheet({ id: d.id }),
   addExpense: () => expenseSheet(),
   editExpense: d => expenseSheet(d.id),
-  addAppt: d => apptSheet({ clientId: d.client, date: d.date }),
+  addAppt: d => apptSheet({ clientId: d.client, date: d.date || (ui.apptView === 'day' ? ui.day : '') }),
   editAppt: d => apptSheet({ id: d.id }),
   addClient: () => clientSheet(),
   editClient: d => clientSheet(d.id),
@@ -1082,8 +1350,10 @@ function start() {
 
 document.addEventListener('click', e => {
   if (e.target.id === 'sheet') return closeSheet();
+  const r = e.target.closest('a[data-remind]'); // let the sms: link open, just remember she texted
+  if (r) { const a = findAppt(r.dataset.remind); if (a) { a.reminded = today(); save(); setTimeout(refresh, 400); } return; }
   const b = e.target.closest('[data-act]');
-  if (b) { e.preventDefault(); ACT[b.dataset.act]?.(b.dataset, b); }
+  if (b) { e.preventDefault(); ACT[b.dataset.act]?.(b.dataset, b, e); }
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet();
