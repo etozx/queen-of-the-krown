@@ -222,7 +222,12 @@ function shrinkImage(file, max = 900) {
   });
 }
 const clientsDatalist = () => `<datalist id="clientsDL">${S.clients.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>`;
-const serviceOptions = sel => `<option value="">Other / custom</option>` + S.services.map(s => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${esc(s.name)} — ${money(s.price)}</option>`).join('');
+const serviceOptions = sel => `<option value="">Other / custom</option>` + Object.entries(S.services.reduce((o, s) => ((o[s.cat || 'Other services'] ||= []).push(s), o), {}))
+  .map(([cat, list]) => `<optgroup label="${esc(cat)}">${list.map(s => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${esc(s.name)} — ${money(s.price)}</option>`).join('')}</optgroup>`).join('');
+// Add-on checkboxes for a hairstyle; the form adds their price (and time) to the total.
+const addonPicker = (svc, chosen = []) => svc?.addons?.length ? `<div class="field"><span>Add-ons</span><div class="pills">${svc.addons.map(x => `<label><input type="checkbox" name="addon" value="${esc(x.id)}" ${chosen.includes(x.id) ? 'checked' : ''}><span>${esc(x.name)}${x.price ? ' +' + money(x.price) : ''}</span></label>`).join('')}</div></div>` : '';
+const pickedAddons = (svc, f) => { const ids = $$('input[name=addon]:checked', f).map(i => i.value); return (svc?.addons || []).filter(x => ids.includes(x.id)); };
+const withAddons = (svc, list) => ({ price: (svc?.price || 0) + list.reduce((n, x) => n + x.price, 0), duration: (svc?.duration || 120) + list.reduce((n, x) => n + (x.duration || 0), 0) });
 const radios = (name, list, sel) => list.map(v => `<label><input type="radio" name="${name}" value="${esc(v)}" ${v === sel ? 'checked' : ''}><span>${esc(v)}</span></label>`).join('');
 const stat = (label, value, sub, ic, cls = '') => `<div class="card stat ${cls}"><div class="label">${icon(ic)}${esc(label)}</div><div class="value">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
 const empty = msg => `<div class="empty">${msg}</div>`;
@@ -704,7 +709,9 @@ PAGES.settings = {
           <label class="field"><span>Closes</span><input class="input" type="time" name="end" value="${S.settings.hours.end}" required></label></div>
         <p class="err" role="alert"></p><div><button class="btn dark sm">Save booking hours</button></div></form>
       <p class="small mt">${icon('check')} Logged in as <b>${esc(Cloud.user?.email || '')}</b> · <span id="syncText">${esc(Cloud.status)}</span></p>
-      <button class="btn ghost sm" data-act="logout">Log out</button></div>` : ''}
+      <button class="btn ghost sm" data-act="logout">Log out</button></div>` : `<div class="card"><h2>Online Account (optional)</h2>
+      <p class="small muted">Right now everything is saved on this device only. Log in as the owner (kherissharp@gmail.com) to keep a copy online and use it on other devices too.</p>
+      <div class="row"><button class="btn dark sm" data-act="openLogin">Log in</button><a class="btn ghost sm" href="styles.html">View the client hairstyles page</a></div></div>`}
     <div class="card"><h2>Booking Policies</h2>
       <p class="small muted">Clients see this on the login page and must agree to it before they request an appointment.</p>
       <form class="form" data-form="policies"><textarea class="input" name="text" rows="12" aria-label="Booking policies">${esc(S.settings.policies)}</textarea>
@@ -754,6 +761,7 @@ function paymentSheet({ apptId, clientId, id } = {}) {
     <div class="field-row">
       <label class="field"><span>Service</span><select class="input" name="service">${serviceOptions(a0?.serviceId)}</select></label>
       <label class="field"><span>Total price</span><input class="input" name="total" inputmode="decimal" placeholder="$0"></label></div>
+    <div id="addonBox"></div>
     <div class="summary-box" id="paySum"></div>
     <label class="field"><span>How much did you get now?</span><input class="input big num" name="amount" inputmode="decimal" placeholder="$0" value="${p ? dollars(p.amount) : ''}" ${cid ? 'autofocus' : ''} required></label>
     <div class="field"><span>Paid with</span><div class="pills first-big">${radios('method', S.methods, p?.method || 'Cash')}</div></div>
@@ -772,10 +780,11 @@ function paymentSheet({ apptId, clientId, id } = {}) {
     $('#paySum').innerHTML = `<div><b>${money(total)}</b><span>Total</span></div><div><b>${money(before)}</b><span>Already paid${a && S.payments.some(x => x.apptId === a.id && x.deposit && x.id !== p?.id) ? ' (deposit)' : ''}</span></div><div><b style="color:${left ? 'var(--red)' : 'var(--green)'}">${money(left)}</b><span>Left to pay</span></div>`;
     if (!touched) f.amount.value = left ? dollars(left) : '';
   };
+  const drawAddons = chosen => { $('#addonBox').innerHTML = addonPicker(findSvc(f.service.value), chosen); };
   const onAppt = () => {
     const a = findAppt(f.appt.value);
-    if (a) { f.service.value = a.serviceId || ''; f.total.value = dollars(a.price); }
-    else if (findSvc(f.service.value) && !f.total.value) f.total.value = dollars(findSvc(f.service.value).price);
+    if (a) { f.service.value = a.serviceId || ''; f.total.value = dollars(a.price); drawAddons(a.addons || []); }
+    else { if (findSvc(f.service.value) && !f.total.value) f.total.value = dollars(findSvc(f.service.value).price); drawAddons([]); }
     sum();
   };
   const fillAppts = () => {
@@ -789,7 +798,8 @@ function paymentSheet({ apptId, clientId, id } = {}) {
   };
   f.client.addEventListener('input', fillAppts);
   f.appt.addEventListener('change', onAppt);
-  f.service.addEventListener('change', () => { const s = findSvc(f.service.value); if (!findAppt(f.appt.value) && s) { f.total.value = dollars(s.price); } sum(); });
+  f.service.addEventListener('change', () => { const s = findSvc(f.service.value); drawAddons([]); if (!findAppt(f.appt.value) && s) { f.total.value = dollars(s.price); } sum(); });
+  $('#addonBox').addEventListener('change', () => { const s = findSvc(f.service.value); f.total.value = dollars(withAddons(s, pickedAddons(s, f)).price); sum(); });
   f.total.addEventListener('input', sum);
   f.amount.addEventListener('input', () => { touched = true; });
   fillAppts();
@@ -803,13 +813,13 @@ FORMS.payment = f => {
   if (f.total.value.trim() && !(total >= 0)) return formErr(f, 'The total price should be a number, like 180.');
   if (!f.date.value) return formErr(f, 'Pick the date you were paid.');
   const { a, c } = recordPayment({ name, apptId: f.appt.value, serviceId: f.service.value, total, amount, method: f.method.value, date: f.date.value,
-    deposit: f.kind.value === 'A deposit', note: f.note.value.trim(), editId: f.dataset.id });
+    deposit: f.kind.value === 'A deposit', note: f.note.value.trim(), editId: f.dataset.id, addons: pickedAddons(findSvc(f.service.value), f).map(x => x.id) });
   closeSheet(); refresh();
   const left = bal(a);
   toast(`Saved ${money(amount)} ${f.method.value} from ${firstName(c.name)}${left ? ` · ${money(left)} still owed` : ' · paid in full'}`);
 };
 // Shared by the payment form and the assistant. `total` is NaN when unknown.
-function recordPayment({ name, apptId, serviceId, total, amount, method, date, deposit, note = '', editId }) {
+function recordPayment({ name, apptId, serviceId, total, amount, method, date, deposit, note = '', editId, addons }) {
   const c = getOrCreateClient(name), svc = findSvc(serviceId);
   let a = findAppt(apptId);
   if (!a) {
@@ -823,6 +833,7 @@ function recordPayment({ name, apptId, serviceId, total, amount, method, date, d
     if (total >= 0) a.price = total;
     if (svc && svc.id !== a.serviceId) { a.serviceId = svc.id; a.serviceName = svc.name; }
   }
+  if (addons) a.addons = addons;
   const fields = { apptId: a.id, clientId: c.id, clientName: c.name, serviceName: a.serviceName, amount, method, date, deposit: !!deposit, note };
   const p = S.payments.find(x => x.id === editId);
   if (p) Object.assign(p, fields); else S.payments.push({ id: uid(), ...fields });
@@ -875,6 +886,7 @@ function apptSheet({ id, clientId, date, time } = {}) {
     <label class="field"><span>Client</span><input class="input" name="client" list="clientsDL" value="${esc(a ? cName(a.clientId) : clientId ? cName(clientId) : '')}" placeholder="Client name" autofocus required>${clientsDatalist()}</label>
     <div class="field-row"><label class="field"><span>Hairstyle / service</span><select class="input" name="service">${serviceOptions(a?.serviceId)}</select></label>
       <label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${a ? dollars(a.price) : ''}" placeholder="$0"></label></div>
+    <div id="addonBox">${addonPicker(findSvc(a?.serviceId), a?.addons)}</div>
     <div class="field-row"><label class="field"><span>Date</span><input class="input" type="date" name="date" value="${a?.date || date || today()}" required></label>
       <label class="field"><span>Time</span><input class="input" type="time" name="time" value="${a?.time || time || ''}"></label></div>
     ${hoursField(a?.duration)}
@@ -889,8 +901,12 @@ function apptSheet({ id, clientId, date, time } = {}) {
   const f = $('#sheet form');
   f.service.addEventListener('change', () => {
     const s = findSvc(f.service.value); if (!s) return;
-    f.price.value = dollars(s.price); f.hours.value = s.duration / 60;
+    f.price.value = dollars(s.price); f.hours.value = s.duration / 60; $('#addonBox').innerHTML = addonPicker(s);
     SH.supplies = s.supplies.map(x => ({ id: uid(), name: x.name, cost: x.cost, state: 'need' })); redrawSupplies();
+  });
+  $('#addonBox').addEventListener('change', () => {
+    const s = findSvc(f.service.value), t = withAddons(s, pickedAddons(s, f));
+    f.price.value = dollars(t.price); f.hours.value = Math.round(t.duration / 60 * 100) / 100;
   });
 }
 FORMS.appt = f => {
@@ -906,7 +922,7 @@ FORMS.appt = f => {
   if (!a) { a = mkAppt(c, s, f.date.value, f.time.value); S.appts.push(a); }
   Object.assign(a, {
     clientId: c.id, serviceId: s?.id || '', serviceName: s?.name || a.serviceName || 'Service', date: f.date.value, time: f.time.value, price, duration,
-    notes: f.notes.value.trim(), status: f.status ? f.status.value : a.status,
+    notes: f.notes.value.trim(), status: f.status ? f.status.value : a.status, addons: pickedAddons(s, f).map(x => x.id),
     supplies: SH.supplies.filter(x => x.name.trim()).map(x => ({ id: x.id || uid(), name: x.name.trim(), cost: x.cost || 0, state: x.state || 'need' })),
   });
   save(); closeSheet(); refresh(); toast(`Saved ${firstName(c.name)} — ${relDay(a.date)}${a.time ? ' at ' + L.time12(a.time) : ''}`);
@@ -1450,7 +1466,7 @@ async function boot() {
   if (rec?.cloud) Object.assign(Cloud, rec.cloud);
   if (rec?.ct) return showLock(rec);
   S = rec?.plain ? migrate(JSON.parse(rec.plain)) : freshState();
-  if (!rec) { if (!Cloud.enabled) addDemo(); save(); } // signed-in owner on a new device: her data comes from the cloud
+  if (!rec) save(); // new device starts empty for her real money (sample data is in Settings)
   start();
 }
 
