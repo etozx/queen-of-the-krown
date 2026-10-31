@@ -17,6 +17,8 @@ function friendly(e) {
   if (/fetch|network/i.test(m)) return "Can't reach the internet right now. Try again in a moment.";
   return m || 'Something went wrong. Please try again.';
 }
+let googleOn = false; // the Google button only shows once Google sign-in is switched on in Supabase
+const checkGoogle = () => fetch(SUPABASE_URL + '/auth/v1/settings', { headers: { apikey: SUPABASE_KEY } }).then(r => r.json()).then(s => { googleOn = !!s.external?.google; }).catch(() => {});
 const showOnly = id => ['#app', '#auth', '#portal', '#lock'].forEach(s => { $(s).hidden = s !== id; });
 
 // ---------- log in / sign up ----------
@@ -26,7 +28,9 @@ function showAuth(mode = 'login', msg = '', good = false) {
   $('#auth').innerHTML = `<div class="auth-card">
     <div class="auth-brand"><span class="crown">${icon('crown')}</span><h1>Queen of the Krown</h1>
       <p>${reset ? 'Choose a new password.' : forgot ? "We'll email you a link to reset your password." : signup ? 'Create your account to book appointments.' : 'Welcome back! Log in to continue.'}</p></div>
-    ${forgot || reset ? '' : `<div class="tabs auth-tabs"><button type="button" class="${signup ? '' : 'on'}" data-auth="login">Log in</button><button type="button" class="${signup ? 'on' : ''}" data-auth="signup">Sign up</button></div>`}
+    ${forgot || reset ? '' : `<button type="button" class="btn ghost block google" id="googleBtn"><svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.5 30.2 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.8 6C12.3 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.8c4.3-4 6.9-9.9 6.9-17.2z"/><path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.2.8-4.7l-7.8-6C1 16.6 0 20.2 0 24s1 7.4 2.6 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.8c-2.1 1.4-4.8 2.3-8.5 2.3-6.3 0-11.7-4.1-13.6-9.8l-7.8 6C6.6 42.6 14.6 48 24 48z"/></svg>Continue with Google</button>
+      <p class="tiny muted center" style="margin:8px 0">or use your email</p>
+      <div class="tabs auth-tabs"><button type="button" class="${signup ? '' : 'on'}" data-auth="login">Log in</button><button type="button" class="${signup ? 'on' : ''}" data-auth="signup">Sign up</button></div>`}
     <form class="form" id="authForm" novalidate>
       ${signup ? `<label class="field"><span>Full name</span><input class="input" name="name" autocomplete="name" maxlength="100" required></label>
         <label class="field"><span>Phone number</span><input class="input" name="phone" type="tel" autocomplete="tel" maxlength="30" required><small>Used for appointment reminders.</small></label>` : ''}
@@ -39,6 +43,15 @@ function showAuth(mode = 'login', msg = '', good = false) {
     </form>
     <p class="tiny muted center">We only keep your name, phone and email to manage your appointments.</p></div>`;
   $$('[data-auth]').forEach(b => b.addEventListener('click', () => showAuth(b.dataset.auth)));
+  // Google checks the email is real, so these accounts are verified without us sending any email.
+  const g = $('#googleBtn');
+  if (g) {
+    g.hidden = !googleOn; g.nextElementSibling.hidden = !googleOn;
+    g.addEventListener('click', async () => {
+      const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: SITE_URL } });
+      if (error) showAuth(mode, friendly(error));
+    });
+  }
   const f = $('#authForm');
   f.addEventListener('submit', async e => {
     e.preventDefault(); e.stopPropagation();
@@ -131,6 +144,9 @@ function renderPortal() {
     <h1 class="page-title" style="margin:18px 0 4px">Hi ${esc(firstName(PT.profile.full_name) || 'there')}!</h1>
     <p class="muted" style="margin:0 0 18px">Book your next appointment or check on the ones you have.</p>
     ${PT.ownerExists ? '' : `<div class="banner"><div class="grow"><b>Setting up?</b> If you own ${esc(name)}, make this your owner account. This only works once.</div><button class="btn sm dark" data-act="pClaim">I'm the owner</button></div>`}
+    ${PT.profile.phone ? '' : `<div class="card"><h2>Add your phone number</h2><form class="form mt" data-form="pPhone">
+      <label class="field"><span>Phone number</span><input class="input" name="phone" type="tel" autocomplete="tel" maxlength="30" required><small>So she can text you appointment reminders.</small></label>
+      <p class="err" role="alert"></p><button class="btn dark block">Save</button></form></div>`}
     ${mineNext.length ? `<div class="card"><h2>My Appointments</h2><div class="list mt">${mineNext.map(bookingRow).join('')}</div></div>` : ''}
     <div class="card mt"><h2>Book an Appointment</h2>
       ${!info ? empty('Online booking opens soon.') : `
@@ -155,6 +171,13 @@ FORMS.pBook = async f => {
   if (error) { btn.disabled = false; return formErr(f, friendly(error)); }
   PT.svc = PT.date = PT.time = null;
   await loadPortal(); renderPortal(); scrollTo(0, 0); toast("Request sent! You'll see it confirmed here.");
+};
+FORMS.pPhone = async f => { // Google accounts arrive without a phone number
+  const phone = f.phone.value.trim();
+  if (phone.replace(/\D/g, '').length < 7) return formErr(f, 'Enter a phone number we can text.');
+  const { error } = await sb.from('profiles').update({ phone }).eq('id', PT.user.id);
+  if (error) return formErr(f, friendly(error));
+  PT.profile.phone = phone; renderPortal(); toast('Phone number saved');
 };
 Object.assign(ACT, {
   pSvc: d => { PT.svc = PT.info.services.find(s => s.id === d.id); PT.date = PT.time = null; renderPortal(); },
@@ -273,7 +296,7 @@ async function main() {
   sb.auth.onAuthStateChange(event => { if (event === 'PASSWORD_RECOVERY') { recovering = true; showAuth('reset'); } });
   const { data: { session } } = await sb.auth.getSession();
   if (recovering) return showAuth('reset');
-  if (!session) return showAuth('login');
+  if (!session) { await checkGoogle(); return showAuth('login'); }
   enter(session);
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { if (Cloud.enabled && S) cloudSync(); else if (PT.user) loadPortal().then(renderPortal); } });
