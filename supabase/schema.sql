@@ -9,8 +9,27 @@ create policy "owner sees self" on public.owners for select using (user_id = aut
 -- Only this email can ever be the owner. The first account with it claims the business, and the claim is locked to that account.
 create or replace function public.owner_email() returns text language sql immutable as $$ select 'kherissharp@gmail.com'::text $$;
 
+-- Her phone. Once sms_required() returns true, the dashboard only opens for a login made with a code texted to this number.
+create or replace function public.owner_phone() returns text language sql immutable as $$ select '17046143287'::text $$;
+create or replace function public.sms_required() returns boolean language sql immutable as $$ select false $$; -- flip to true once texting works
+
+create or replace function public.owner_gate() returns text language plpgsql stable security definer set search_path = public
+as $$
+declare u auth.users;
+begin
+  select * into u from auth.users where id = auth.uid();
+  if u.id is null or lower(u.email) is distinct from owner_email() then return 'no'; end if;
+  if not exists (select 1 from owners where user_id = u.id) then
+    return case when exists (select 1 from owners) then 'no' else 'claim' end;
+  end if;
+  if not sms_required() then return 'owner'; end if;
+  if u.phone is distinct from owner_phone() or u.phone_confirmed_at is null then return 'needs_phone'; end if;
+  if not coalesce(auth.jwt() -> 'amr' @> '[{"method": "otp"}]'::jsonb, false) then return 'needs_code'; end if;
+  return 'owner';
+end $$;
+
 create or replace function public.is_owner() returns boolean language sql stable security definer set search_path = public
-as $$ select exists (select 1 from owners o join auth.users u on u.id = o.user_id where o.user_id = auth.uid() and lower(u.email) = owner_email()) $$;
+as $$ select owner_gate() = 'owner' $$;
 
 create or replace function public.owner_exists() returns boolean language sql stable security definer set search_path = public
 as $$ select exists (select 1 from owners) $$;

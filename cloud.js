@@ -6,6 +6,7 @@ const SUPABASE_KEY = 'sb_publishable_RKiCilXFSTq219_gFjyg8g_Jn4IZB1h';
 const sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 const SITE_URL = location.origin + location.pathname;
 const OWNER_EMAIL = 'kherissharp@gmail.com'; // also enforced in the database (owner_email() in schema.sql)
+const OWNER_PHONE = '+17046143287', OWNER_PHONE_SHOWN = '(704) 614-3287'; // owner_phone() in schema.sql
 const roleKey = id => 'qotk-role:' + id;
 const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } } };
 
@@ -61,12 +62,14 @@ function showAuth(mode = 'login', msg = '', good = false) {
       <button class="btn dark block">${reset ? 'Save new password' : forgot ? 'Send reset link' : signup ? 'Create account' : 'Log in'}</button>
       ${mode === 'login' ? '<button type="button" class="btn ghost block" data-auth="forgot">Forgot password?</button><button type="button" class="btn ghost block" id="previewBtn">Just look around (this device only)</button>' : ''}
       ${forgot ? '<button type="button" class="btn ghost block" data-auth="login">Back to log in</button>' : ''}
+      ${mode === 'login' ? '<button type="button" class="btn ghost block" id="ownerBtn">Owner? Log in with a text code</button>' : ''}
     </form>
     <p class="tiny muted center">We only keep your name, phone and email to manage your appointments.</p></div></div>`;
   $$('[data-auth]').forEach(b => b.addEventListener('click', () => showAuth(b.dataset.auth)));
   // Google checks the email is real, so these accounts are verified without us sending any email.
   // shortcut: opens the app offline with sample data and nothing from the cloud; remove once the owner account exists
   $('#previewBtn')?.addEventListener('click', () => { showOnly(''); boot(); });
+  $('#ownerBtn')?.addEventListener('click', () => showPhone('needs_code'));
   const g = $('#googleBtn');
   if (g) {
     g.hidden = !googleOn; g.nextElementSibling.hidden = !googleOn;
@@ -114,15 +117,63 @@ function showAuth(mode = 'login', msg = '', good = false) {
 async function enter(session) {
   let role = store.get(roleKey(session.user.id));
   try {
-    let { data, error } = await sb.rpc('is_owner');
+    // owner_gate (schema.sql) answers: owner, claim, needs_phone (confirm her number once), needs_code (log in with a text code), or no.
+    let { data: gate, error } = await sb.rpc('owner_gate');
     if (error) throw error;
-    // Her email signs in for the first time: claim the business (the database only allows this email).
-    if (!data && session.user.email?.toLowerCase() === OWNER_EMAIL) ({ data } = await sb.rpc('claim_owner'));
-    role = data ? 'owner' : 'client'; store.set(roleKey(session.user.id), role);
+    if (gate === 'claim') { await sb.rpc('claim_owner'); ({ data: gate } = await sb.rpc('owner_gate')); }
+    if (gate === 'needs_phone' || gate === 'needs_code') return showPhone(gate);
+    role = gate === 'owner' ? 'owner' : 'client'; store.set(roleKey(session.user.id), role);
   } catch { /* offline: use the role remembered on this device */ }
   if (role === 'owner') { Cloud.enabled = true; Cloud.user = session.user; showOnly(''); return boot(); }
   if (!role) return showAuth('login', "Can't reach the internet right now. Check your connection and try again.");
   showPortal(session.user);
+}
+
+// ---------- owner text code: only her phone can open the dashboard ----------
+// needs_phone: logged in with email + password, phone never confirmed -> text a code to attach her number (once).
+// needs_code / login: text a code to her number and log in with it.
+function showPhone(mode, msg = '') {
+  showOnly('#auth');
+  let sent = false;
+  const attach = mode === 'needs_phone';
+  const draw = () => {
+    $('#auth').innerHTML = `<div class="auth-card">
+      <div class="auth-brand"><span class="crown">${icon('crown')}</span><h1>Owner login</h1>
+        <p>${attach ? 'One-time setup: confirm the business phone.' : 'For your security, the dashboard only opens with a code texted to the business phone.'}</p></div>
+      <form class="form" id="codeForm" novalidate>
+        <div class="hint">We'll text a 6-digit code to <b style="white-space:nowrap">${OWNER_PHONE_SHOWN}</b>.</div>
+        ${sent ? '<label class="field"><span>Code</span><input class="input" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required></label>' : ''}
+        <p class="err" role="alert" ${msg ? '' : 'hidden'}>${esc(msg)}</p>
+        <button class="btn dark block">${sent ? 'Open my dashboard' : 'Text me a code'}</button>
+        ${sent ? '<button type="button" class="btn ghost block" id="resend">Send a new code</button>' : ''}
+        <button type="button" class="btn ghost block" id="back">Back</button>
+      </form></div>`;
+    $('#back').addEventListener('click', async () => { await sb.auth.signOut(); showAuth('login'); });
+    $('#resend')?.addEventListener('click', () => { sent = false; msg = ''; draw(); });
+    const f = $('#codeForm');
+    if (sent) f.code.focus();
+    f.addEventListener('submit', async e => {
+      e.preventDefault(); e.stopPropagation();
+      const btn = $('button.dark', f); btn.disabled = true;
+      try {
+        if (!sent) {
+          const { error } = attach ? await sb.auth.updateUser({ phone: OWNER_PHONE }) : await sb.auth.signInWithOtp({ phone: OWNER_PHONE, options: { shouldCreateUser: false } });
+          if (error) throw error;
+          sent = true; msg = ''; return draw();
+        }
+        const token = f.code.value.replace(/\D/g, '');
+        if (token.length < 6) throw new Error('Enter the 6-digit code from the text.');
+        const { data, error } = await sb.auth.verifyOtp({ phone: OWNER_PHONE, token, type: attach ? 'phone_change' : 'sms' });
+        if (error) throw error;
+        enter(data.session || (await sb.auth.getSession()).data.session);
+      } catch (e2) {
+        const m = String(e2?.message || '');
+        msg = /provider|sms|twilio/i.test(m) ? "Text codes aren't switched on yet. Try again later." : /expired|invalid/i.test(m) ? 'That code is wrong or expired. Send a new code.' : /signups not allowed|not found/i.test(m) ? 'Log in with your email and password first to connect this phone.' : friendly(e2);
+        draw();
+      } finally { btn.disabled = false; }
+    });
+  };
+  draw();
 }
 
 // =====================================================================
