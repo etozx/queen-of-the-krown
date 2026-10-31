@@ -6,8 +6,11 @@ create table if not exists public.owners (user_id uuid primary key references au
 alter table public.owners enable row level security;
 create policy "owner sees self" on public.owners for select using (user_id = auth.uid());
 
+-- Only this email can ever be the owner. The first account with it claims the business, and the claim is locked to that account.
+create or replace function public.owner_email() returns text language sql immutable as $$ select 'kherissharp@gmail.com'::text $$;
+
 create or replace function public.is_owner() returns boolean language sql stable security definer set search_path = public
-as $$ select exists (select 1 from owners where user_id = auth.uid()) $$;
+as $$ select exists (select 1 from owners o join auth.users u on u.id = o.user_id where o.user_id = auth.uid() and lower(u.email) = owner_email()) $$;
 
 create or replace function public.owner_exists() returns boolean language sql stable security definer set search_path = public
 as $$ select exists (select 1 from owners) $$;
@@ -16,6 +19,7 @@ create or replace function public.claim_owner() returns boolean language plpgsql
 as $$
 begin
   if auth.uid() is null then return false; end if;
+  if (select lower(email) from auth.users where id = auth.uid()) is distinct from owner_email() then return false; end if;
   if exists (select 1 from owners) then return exists (select 1 from owners where user_id = auth.uid()); end if;
   insert into owners values (auth.uid());
   return true;

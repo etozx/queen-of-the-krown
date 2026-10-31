@@ -5,6 +5,7 @@ const SUPABASE_URL = 'https://ndmegraadplnvurcawqt.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_RKiCilXFSTq219_gFjyg8g_Jn4IZB1h';
 const sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 const SITE_URL = location.origin + location.pathname;
+const OWNER_EMAIL = 'kherissharp@gmail.com'; // also enforced in the database (owner_email() in schema.sql)
 const roleKey = id => 'qotk-role:' + id;
 const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } } };
 
@@ -36,6 +37,7 @@ function showAuth(mode = 'login', msg = '', good = false) {
     <div class="brand"><span class="crown">${icon('crown')}</span><span class="brand-name">${esc(info?.name || 'Queen of the Krown')}</span></div>
     <h2>Hair done right.<br><em>Booked in a minute.</em></h2>
     <p>Braids, locs, twists and bobs in Charlotte, NC. Pick your style, choose a time that works, and get a confirmation right here.</p>
+    <a class="btn gold" href="styles.html" style="margin:-8px 0 24px">See all hairstyles & book</a>
     <div class="hero-grid">
       <div class="hero-box"><h3>How booking works</h3><ol><li>Create your free account</li><li>Choose a service, day and time</li><li>She confirms, and you get reminders</li></ol></div>
       <div class="hero-box"><h3>Hours</h3><p>${hours.days.map(d => DAYS[d]).join(', ')}<br>${L.time12(hours.start)} – ${L.time12(hours.end)}</p></div>
@@ -112,8 +114,10 @@ function showAuth(mode = 'login', msg = '', good = false) {
 async function enter(session) {
   let role = store.get(roleKey(session.user.id));
   try {
-    const { data, error } = await sb.rpc('is_owner');
+    let { data, error } = await sb.rpc('is_owner');
     if (error) throw error;
+    // Her email signs in for the first time: claim the business (the database only allows this email).
+    if (!data && session.user.email?.toLowerCase() === OWNER_EMAIL) ({ data } = await sb.rpc('claim_owner'));
     role = data ? 'owner' : 'client'; store.set(roleKey(session.user.id), role);
   } catch { /* offline: use the role remembered on this device */ }
   if (role === 'owner') { Cloud.enabled = true; Cloud.user = session.user; showOnly(''); return boot(); }
@@ -172,7 +176,7 @@ function renderPortal() {
     ${PT.error ? `<p class="err">${PT.error}</p>` : ''}
     <h1 class="page-title" style="margin:18px 0 4px">Hi ${esc(firstName(PT.profile.full_name) || 'there')}!</h1>
     <p class="muted" style="margin:0 0 18px">Book your next appointment or check on the ones you have.</p>
-    ${PT.ownerExists ? '' : `<div class="banner"><div class="grow"><b>Setting up?</b> If you own ${esc(name)}, make this your owner account. This only works once.</div><button class="btn sm dark" data-act="pClaim">I'm the owner</button></div>`}
+    ${PT.ownerExists || PT.user.email?.toLowerCase() !== OWNER_EMAIL ? '' : `<div class="banner"><div class="grow"><b>Setting up?</b> If you own ${esc(name)}, make this your owner account. This only works once.</div><button class="btn sm dark" data-act="pClaim">I'm the owner</button></div>`}
     ${PT.profile.phone ? '' : `<div class="card"><h2>Add your phone number</h2><form class="form mt" data-form="pPhone">
       <label class="field"><span>Phone number</span><input class="input" name="phone" type="tel" autocomplete="tel" maxlength="30" required><small>So she can text you appointment reminders.</small></label>
       <p class="err" role="alert"></p><button class="btn dark block">Save</button></form></div>`}
