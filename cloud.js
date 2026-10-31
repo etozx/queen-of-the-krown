@@ -125,7 +125,11 @@ async function enter(session) {
 // CLIENT PORTAL — book appointments and see your own
 // =====================================================================
 const DEFAULT_HOURS = { start: '09:00', end: '19:00', days: [2, 3, 4, 5, 6] };
-const PT = { user: null, info: null, taken: [], mine: [], profile: {}, ownerExists: true, svc: null, date: null, time: null, error: '' };
+const PT = { user: null, info: null, taken: [], mine: [], profile: {}, ownerExists: true, svc: null, adds: new Set(), date: null, time: null, error: '' };
+function bookTotal() { // chosen service + add-ons
+  const list = (PT.svc?.addons || []).filter(a => PT.adds.has(a.id));
+  return { list, price: (PT.svc?.price || 0) + list.reduce((n, a) => n + a.price, 0), duration: (PT.svc?.duration || 120) + list.reduce((n, a) => n + (a.duration || 0), 0) };
+}
 const BOOK_LABEL = { requested: 'Waiting for her to confirm', confirmed: 'Confirmed', declined: 'Not available — please pick another time', cancelled: 'Cancelled' };
 const BOOK_CHIP = { requested: 'booked', confirmed: 'paid', declined: 'unpaid', cancelled: 'cancelled' };
 
@@ -150,9 +154,13 @@ function renderPortal() {
   const t = today(), info = PT.info, hours = info?.hours || DEFAULT_HOURS, name = info?.name || 'Queen of the Krown';
   const busy = [...(info?.busy || []), ...PT.taken.map(x => ({ date: x.date, time: x.time, duration: x.duration }))];
   const now = new Date(), nowMins = now.getHours() * 60 + now.getMinutes() + 60; // need at least an hour's notice
-  const slotsFor = d => (PT.svc ? L.freeSlots({ date: d, duration: PT.svc.duration || 120, hours, busy, nowMins: d === t ? nowMins : -1 }) : []);
+  const tot = bookTotal();
+  const slotsFor = d => (PT.svc ? L.freeSlots({ date: d, duration: tot.duration, hours, busy, nowMins: d === t ? nowMins : -1 }) : []);
   const dates = PT.svc ? L.openDates(t, 45, hours.days).filter(d => slotsFor(d).length) : [];
+  if (PT.date && !dates.includes(PT.date)) PT.date = PT.time = null; // add-ons made the appointment too long for that day
   const times = PT.date ? slotsFor(PT.date) : [];
+  if (PT.time && !times.includes(PT.time)) PT.time = null;
+  const addons = PT.svc?.addons || [];
   const mineNext = PT.mine.filter(b => b.date >= t && b.status !== 'cancelled').sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   const minePast = PT.mine.filter(b => !mineNext.includes(b)).slice(0, 5);
   const bookingRow = b => `<div class="item"><div class="when"><span>${DOW[L.parse(b.date).getDay()]}</span><b>${+b.date.slice(8)}</b><span>${MON[+b.date.slice(5, 7) - 1]}</span></div>
@@ -174,11 +182,14 @@ function renderPortal() {
       <div class="step">1. Pick a service</div>
       ${byCat(info.services).map(([cat, list]) => `<div class="svc-cat">${esc(cat)}</div><div class="svc-grid">${list.map(s => `<button class="svc ${PT.svc?.id === s.id ? 'on' : ''}" data-act="pSvc" data-id="${esc(s.id)}"><b>${esc(s.name)}</b><span>${money(s.price)} · ${hrs(s.duration)}</span></button>`).join('')}</div>`).join('')}
       ${PT.svc?.desc ? `<div class="hint mt">${esc(PT.svc.desc)}</div>` : ''}
-      ${PT.svc ? `<div class="step">2. Pick a day</div>
+      ${addons.length ? `<div class="step">2. Add-ons <span class="muted small">(optional — thick hair must be added or there's an extra charge)</span></div>
+        <div class="addons">${addons.map(a => `<label class="check ${PT.adds.has(a.id) ? 'on' : ''}"><input type="checkbox" data-act="pAdd" data-id="${esc(a.id)}" ${PT.adds.has(a.id) ? 'checked' : ''}><span>${esc(a.name)}</span><b>${a.price ? '+' + money(a.price) : 'Free'}</b></label>`).join('')}</div>
+        <div class="hint mt">Total: <b>${money(tot.price)}</b> · about ${hrs(tot.duration)}</div>` : ''}
+      ${PT.svc ? `<div class="step">${addons.length ? 3 : 2}. Pick a day</div>
         ${dates.length ? `<div class="slots">${dates.map(d => `<button class="${PT.date === d ? 'on' : ''}" data-act="pDate" data-d="${d}">${relDay(d)}</button>`).join('')}</div>` : '<p class="muted small">No open times in the next 6 weeks. Please check back soon.</p>'}` : ''}
-      ${PT.date ? `<div class="step">3. Pick a time</div><div class="slots">${times.map(x => `<button class="${PT.time === x ? 'on' : ''}" data-act="pTime" data-t="${x}">${L.time12(x)}</button>`).join('')}</div>` : ''}
-      ${PT.time ? `<form class="form mt" data-form="pBook"><label class="field"><span>Anything she should know? (optional)</span><textarea class="input" name="notes" maxlength="500" placeholder="e.g. color 1B, length, inspo"></textarea></label>
-        <div class="hint">${esc(PT.svc.name)} · <b>${relDay(PT.date)} at ${L.time12(PT.time)}</b> · ${money(PT.svc.price)}<br>This is a request. You'll see “Confirmed” here once she accepts.</div>
+      ${PT.date ? `<div class="step">${addons.length ? 4 : 3}. Pick a time</div><div class="slots">${times.map(x => `<button class="${PT.time === x ? 'on' : ''}" data-act="pTime" data-t="${x}">${L.time12(x)}</button>`).join('')}</div>` : ''}
+      ${PT.time ? `<form class="form mt" data-form="pBook"><label class="field"><span>Anything she should know? (optional)</span><textarea class="input" name="notes" maxlength="300" placeholder="e.g. color 1B, length, inspo"></textarea></label>
+        <div class="hint">${esc(PT.svc.name)}${tot.list.length ? ' + ' + esc(tot.list.map(a => a.name).join(', ')) : ''} · <b>${relDay(PT.date)} at ${L.time12(PT.time)}</b> · ${money(tot.price)}<br>This is a request. You'll see “Confirmed” here once she accepts.</div>
         ${info.policies ? `<details class="mt"><summary><b>Booking policies</b> (deposits, late fees, hair prep)</summary><div class="policy small">${esc(info.policies)}</div></details>
         <label class="check"><input type="checkbox" name="agree" required> I've read and agree to the booking policies</label>` : ''}
         <p class="err" role="alert"></p><button class="btn gold block">Request this appointment</button></form>` : ''}`}
@@ -189,12 +200,14 @@ function renderPortal() {
 FORMS.pBook = async f => {
   if (f.agree && !f.agree.checked) return formErr(f, 'Please read and agree to the booking policies first.');
   const btn = $('button.gold', f); btn.disabled = true;
+  const tot = bookTotal(), extras = tot.list.map(a => a.name + (a.price ? ` (+${money(a.price)})` : '')).join(', ');
   const { error } = await sb.from('bookings').insert({
     client_name: PT.profile.full_name || PT.user.email, phone: PT.profile.phone || null, service_id: PT.svc.id, service_name: PT.svc.name,
-    price: PT.svc.price, duration: PT.svc.duration || 120, date: PT.date, time: PT.time, notes: f.notes.value.trim(),
+    price: tot.price, duration: Math.min(tot.duration, 720), date: PT.date, time: PT.time, // the bookings table allows 12 hours max
+    notes: [extras && 'Add-ons: ' + extras, f.notes.value.trim()].filter(Boolean).join('\n').slice(0, 500),
   });
   if (error) { btn.disabled = false; return formErr(f, friendly(error)); }
-  PT.svc = PT.date = PT.time = null;
+  PT.svc = PT.date = PT.time = null; PT.adds.clear();
   await loadPortal(); renderPortal(); scrollTo(0, 0); toast("Request sent! You'll see it confirmed here.");
 };
 FORMS.pPhone = async f => { // Google accounts arrive without a phone number
@@ -205,7 +218,8 @@ FORMS.pPhone = async f => { // Google accounts arrive without a phone number
   PT.profile.phone = phone; renderPortal(); toast('Phone number saved');
 };
 Object.assign(ACT, {
-  pSvc: d => { PT.svc = PT.info.services.find(s => s.id === d.id); PT.date = PT.time = null; renderPortal(); },
+  pSvc: d => { PT.svc = PT.info.services.find(s => s.id === d.id); PT.date = PT.time = null; PT.adds.clear(); renderPortal(); },
+  pAdd: d => { PT.adds.has(d.id) ? PT.adds.delete(d.id) : PT.adds.add(d.id); const y = scrollY; renderPortal(); scrollTo(0, y); },
   pDate: d => { PT.date = d.d; PT.time = null; renderPortal(); },
   pTime: d => { PT.time = d.t; renderPortal(); $('#portal [data-form=pBook]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); },
   pCancel: async d => {
@@ -279,7 +293,7 @@ async function publishInfo() {
   const t = today();
   const info = {
     name: S.settings.name, hours: S.settings.hours, policies: S.settings.policies,
-    services: S.services.map(s => ({ id: s.id, cat: s.cat || '', name: s.name, price: s.price, duration: s.duration || 120, desc: s.desc || '' })),
+    services: S.services.map(s => ({ id: s.id, cat: s.cat || '', name: s.name, price: s.price, duration: s.duration || 120, desc: s.desc || '', addons: s.addons || [] })),
     busy: S.appts.filter(a => !a.demo && live(a) && a.date >= t && a.time).map(a => ({ date: a.date, time: a.time, duration: a.duration || 120 })),
   };
   const json = JSON.stringify(info);
@@ -306,7 +320,8 @@ async function acceptBooking(id) {
   if (!c) c = getOrCreateClient(b.client_name);
   c.userId = b.client_id; if (!c.phone && b.phone) c.phone = b.phone;
   const s = findSvc(b.service_id), a = mkAppt(c, s, b.date, b.time);
-  Object.assign(a, { serviceName: b.service_name, price: s ? s.price : b.price || 0, duration: b.duration, notes: b.notes, source: 'online' });
+  // shortcut: the add-on total comes from the client's request (never below her base price); she can edit it on the appointment
+  Object.assign(a, { serviceName: b.service_name, price: Math.max(s ? s.price : 0, b.price || 0), duration: b.duration, notes: b.notes, source: 'online' });
   S.appts.push(a);
   const { error } = await sb.from('bookings').update({ status: 'confirmed', appt_id: a.id }).eq('id', b.id);
   if (error) { S.appts.pop(); if (isNew) S.clients.pop(); return toast(friendly(error), 'error'); }

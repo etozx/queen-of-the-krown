@@ -65,7 +65,7 @@ const DEFAULT_METHODS = ['Cash', 'Cash App', 'Zelle', 'Card', 'Other'];
 const sup = (name, d) => ({ name, cost: d * 100 });
 // Her real menu, copied from her Acuity booking page (queenofthekrownbooking.as.me). [category, name, dollars, minutes, description]
 const MENU = [
-  ['Braids', 'Miracle Knot Braids *Burmese curl', 560, 300, 'Made on your natural hair, braided as the foundation, with crochet hair added throughout and to the ends for a full, seamless look. Smedium parts.'],
+  ['Braids', 'Miracle Knot Braids *Burmese curl', 560, 300, 'Made on your natural hair, braided as the foundation, with crochet hair added throughout and to the ends for a full, seamless look. Smedium parts. Includes 18-inch 100% human hair bundles; for longer or fuller, pick the add-ons. Needs a $150 deposit (the rest of the deposit can be sent by Zelle).'],
   ['Braids', 'Miracle Knot Braids *Loose wave', 600, 300, 'Comes with 2 bundles (full head) of loose wave crochet hair, done with the braid-in method.'],
   ['Braids', 'Miracle Knots *Body wave', 570, 300, 'Comes with 2 bundles (full head) of body wave crochet hair, done with the braid-in method. Can last up to 2 months!'],
   ['Bobs', 'Intertwined Bob', 320, 360, ''],
@@ -104,8 +104,70 @@ const MENU = [
   ['Touch Ups', 'Island Twist *Touch up only', 190, 180, 'Take out only the perimeter of your twist, and wash and blow dry your hair first.'],
   ['Specialty Services', 'Small Passion Twist Butt Length', 500, 780, 'Butt-length passion twist with human hair curls in the front.'],
 ];
+// Her add-ons from the same page: id: [name, dollars, extra minutes]. MENU_ADDONS[i] lists the add-ons offered with MENU[i].
+const ADDONS = {
+  5139311: ['#30 curls', 0, 0], 3654001: ['Color 1B', 0, 0], 6920276: ['20 inch', 93, 0], 6920278: ['22 inch', 100, 0],
+  7243903: ['22 inch', 120, 0], 6366496: ['27,30 deep wave', 30, 0], 6366488: ['4,27,30 deep wave', 30, 0], 5309546: ['4,27,30 mix', 0, 0],
+  5588693: ['ACV rinse', 10, 0], 3911899: ['Below waist length', 75, 0], 3633417: ['Blow dry', 20, 30], 6126724: ['Body wave', 0, 0],
+  4946669: ['Boho soft locs', 20, 30], 4639906: ['Burgundy', 0, 0], 4027548: ['Burgundy', 10, 0], 5407049: ['Burgundy', 0, 0],
+  4950468: ['Butt length', 0, 0], 4117119: ['Butt length', 70, 45], 3654003: ['Color 1', 0, 0], 3654005: ['Color 2', 0, 0],
+  4571552: ['Color 27', 0, 0], 5075934: ['Color 27', 0, 0], 3823922: ['Color 27/30 mix', 20, 0], 3654011: ['Color 30', 0, 0],
+  3823920: ['Color 30 highlights', 10, 0], 4307215: ['Color 350', 0, 0], 3654016: ['Color 350', 35, 0], 3654008: ['Color 4', 0, 0],
+  3653894: ['Curls', 20, 10], 3875580: ['Curly ends', 10, 10], 6921622: ['Extra bundle', 100, 0], 6670032: ['Extra bundle', 100, 60],
+  3875570: ['Extra curls', 20, 0], 3875575: ['Extra human curls', 65, 10], 3915180: ['Full color tuck', 50, 60], 3714049: ['Full head', 20, 30],
+  3981235: ['Hair jewelry', 10, 0], 4058987: ['Highlights color 27', 12, 0], 4235090: ['Human hair curls', 65, 0], 4946672: ['Indie locs', 0, 0],
+  3584605: ['Just top (sides faded)', 0, 0], 3913991: ['Locs over locs', 65, 0], 4421965: ['Marley hair', 0, 0], 3445538: ['Mid back length', 0, 0],
+  6353157: ['Natural color 1B', 0, 0], 5139309: ['Ombré 30', 0, 0], 3654018: ['Ombré 27', 0, 0], 3654021: ['Ombré 30', 0, 0],
+  3827275: ['Priority appointment', 50, 0], 5720137: ['Request color mix', 20, 0], 6353201: ['Smaller parts', 100, 60], 3911879: ['Smaller parts', 80, 60],
+  6972011: ['Squeeze in', 50, 0], 3844483: ['Thick hair', 20, 45], 3653977: ['Thigh length', 90, 60], 5956803: ['Thigh length', 100, 60],
+  4449973: ['Triangle parts', 10, 25], 5749758: ['Twist out', 0, 0], 4950470: ['Waist length', 0, 0], 5749759: ['Wash n go', 0, 0],
+  4472033: ['Wash + blow dry', 55, 180],
+};
+const MENU_ADDONS = [
+  [6920276,6920278,3633417,6921622,6353201,6972011,3844483],
+  [7243903,6353201,3844483],
+  [],
+  [3654001,3633417,3654003,3654005,3654008,3875570,3981235,3654021,3827275,3844483],
+  [3654001,3633417,3654003,3654005,4571552,3654011,3654008,3875575,3981235,3827275,3911879,3844483],
+  [3654001,3633417,5407049,3654003,3654005,3654011,4307215,3654008,3875575,3981235,4058987,3654021,3844483],
+  [3654001,3633417,4639906,3654003,3654005,3654008,3875570,3875575,3981235,3654021,3827275,3844483],
+  [3654001,3633417,4027548,4639906,5407049,3654003,3654005,3654008,3875570,3981235,3654018,3654021,3827275,3844483,4472033],
+  [3654001,3633417,4639906,3654003,3654005,3654008,3875570,3981235,3827275,3911879,3844483,4472033],
+  [3654001,5588693,3633417,5407049,3654003,3654005,4571552,3654011,4307215,3654008,3981235,4235090,3827275,5720137,3911879,3844483],
+  [3654001,3633417,3981235,3827275,3844483,5749758,5749759],
+  [3654001,3633417,3844483],
+  [3654001,3633417,3654003,3654005,3654011,3875570,3981235,4235090,3827275,3844483],
+  [6366496,6366488,3633417,6126724,3875575,6353157],
+  [3654001,3633417,3654003,3654005,4571552,3654011,4307215,3654008,3875570,3875575,3981235,4235090,3827275,5720137,3844483],
+  [3654001,3633417,3654003,3654011,4307215,3654008,5720137,3844483],
+  [5139311,3654001,5309546,5588693,3633417,4639906,4950468,3654003,3654005,4571552,3654011,3823920,4307215,3654008,3875570,3875575,3981235,4058987,4235090,5139309,3827275,5720137,3911879,3844483,3653977,4950470],
+  [5139311,3654001,5309546,5588693,3633417,3654003,3654005,4571552,3654011,4307215,3654008,3875570,3875575,3981235,4235090,5139309,3827275,5720137,3911879,3844483],
+  [3654001,3633417,6670032,3981235,6353157,3844483],
+  [3654001,3633417,3654008,6353157,3911879,3844483],
+  [3654001,3633417,3654003,3654005,3654011,3654008,3653894,3915180,3981235,3827275,3911879,3844483],
+  [3654001,3633417,3654003,3654005,3654011,3823920,3654008,3653894,3875570,3915180,3981235,4058987,4235090,3913991,3827275,3911879,3844483,4449973,4472033],
+  [3654001,3911899,3633417,4117119,3654003,3654005,3654008,3875575,3915180,3981235,3827275,3844483],
+  [3654001,3633417,3654003,3654011,3654008,3875575,3981235,3827275,3844483,3653977],
+  [3633417,3981235,3584605,3827275,3844483],
+  [3633417,3981235,3827275,3844483],
+  [3633417,3981235,3827275,3844483,4472033],
+  [3633417],
+  [3654001,3633417,4027548,4639906,5407049,3654003,3654005,5075934,3823922,3654011,3823920,3654016,3654008,3875580,3981235,3654018,3654021,3827275,3844483],
+  [3654001,3633417,4027548,4639906,3654003,3654005,3823922,3654011,3823920,3654016,3654008,3875580,3875570,3981235,3445538,3654018,3654021,3827275,3844483],
+  [3654001,3633417,4027548,4639906,3654003,3654005,3823922,3654011,3823920,3654016,3654008,3875580,3875570,3981235,3654018,3654021,3827275,3844483],
+  [3654001,3633417,4027548,3654003,3654005,3654008,3875580,3875570,3981235,3654018,3654021,3827275,3844483],
+  [3654001,3633417,4027548,4639906,5407049,3654003,3654005,3823922,3654011,3823920,3654016,3654008,3875580,3875570,3981235,4421965,3654018,3654021,3827275,3844483],
+  [],
+  [3633417,4946669,3981235,4946672,3827275,3844483],
+  [3654001,3633417,3654005,3654008,3714049,3981235,3827275,3844483],
+  [3654001,3633417,3654005,3654008,3981235,3827275,3844483],
+  [3654001,3633417,3654005,3654008,3981235,3827275,3844483,5956803],
+];
 const slug = s => 'svc-' + s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const defaultServices = () => MENU.map(([cat, name, dollars, duration, desc]) => ({ id: slug(name), cat, name, price: dollars * 100, duration, desc, supplies: [sup('Hair for this style', 0)] }));
+const defaultServices = () => MENU.map(([cat, name, dollars, duration, desc], i) => ({
+  id: slug(name), cat, name, price: dollars * 100, duration, desc, supplies: [sup('Hair for this style', 0)],
+  addons: MENU_ADDONS[i].map(id => ({ id: String(id), name: ADDONS[id][0], price: ADDONS[id][1] * 100, duration: ADDONS[id][2] })),
+}));
 const DEFAULT_POLICIES = `Located in Charlotte, NC. Questions or photos of your hair: text 704-614-3287.
 
 THICK HAIR: select it as an add-on, or there will be an extra charge when you arrive.
@@ -134,7 +196,7 @@ PHOTOS / VIDEOS
 Thank you, Kheris Sharp`;
 const DEFAULT_MSG = 'Hi {name}! Reminder from {business}: your {service} is {day} at {time}. Reply YES to confirm. See you soon!';
 const freshState = () => ({
-  v: 2, settings: { name: 'Queen of the Krown', reminderMsg: DEFAULT_MSG, policies: DEFAULT_POLICIES, hours: { start: '09:00', end: '19:00', days: [2, 3, 4, 5, 6] } }, services: defaultServices(),
+  v: 3, settings: { name: 'Queen of the Krown', reminderMsg: DEFAULT_MSG, policies: DEFAULT_POLICIES, hours: { start: '09:00', end: '19:00', days: [2, 3, 4, 5, 6] } }, services: defaultServices(),
   categories: [...DEFAULT_CATEGORIES], methods: [...DEFAULT_METHODS],
   clients: [], appts: [], payments: [], expenses: [], stock: [],
 });
@@ -148,6 +210,11 @@ const migrate = s => {
     const OLD = ['svc-knotless', 'svc-bussdown', 'svc-quickweave', 'svc-sewin', 'svc-wig', 'svc-silkpress'];
     s.services = [...defs, ...s.services.filter(x => !OLD.includes(x.id))]; s.v = 2;
   }
+  if (s.v < 3) { // v3: add-ons
+    s.services.forEach(x => { const d = defs.find(y => y.id === x.id); x.addons ||= d ? d.addons : []; if (d && x.id === defs[0].id) x.desc = d.desc; });
+    s.v = 3;
+  }
+  s.services.forEach(x => { x.addons ||= []; });
   s.services.forEach(x => { x.duration ||= defs.find(d => d.id === x.id)?.duration || 120; });
   return s;
 };

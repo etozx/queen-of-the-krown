@@ -320,6 +320,11 @@ table.simple .input { min-height: 38px; padding: 6px 10px; font-size: 14px; }
 .svc-cat { font-size: 12.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--gold); font-weight: 600; margin: 14px 0 6px; }
 .check { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; cursor: pointer; }
 .check input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--ink); }
+.addons { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.addons .check { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; align-items: center; background: #fff; min-height: 46px; }
+.addons .check span { flex: 1; }
+.addons .check b { font-weight: 500; color: var(--muted); font-size: 14px; }
+.addons .check.on { border-color: var(--ink); background: var(--gold-soft); }
 @media (max-width: 960px) {
   .auth { align-items: flex-start; }
   .auth-wrap { grid-template-columns: 1fr; gap: 28px; max-width: 460px; }
