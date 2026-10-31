@@ -63,17 +63,78 @@ function hydrate(root) {
 const DEFAULT_CATEGORIES = ['Hair & Bundles', 'Wigs', 'Lace', 'Braiding Hair', 'Hair Products', 'Supplies', 'Equipment', 'Advertising', 'Business', 'Other'];
 const DEFAULT_METHODS = ['Cash', 'Cash App', 'Zelle', 'Card', 'Other'];
 const sup = (name, d) => ({ name, cost: d * 100 });
-const defaultServices = () => [
-  { id: 'svc-knotless', name: 'Knotless Braids', price: 18000, duration: 300, supplies: [sup('Pre-stretched braiding hair', 25), sup('Hair mousse', 10), sup('Edge control', 8)] },
-  { id: 'svc-bussdown', name: '26" Buss Down', price: 25000, duration: 180, supplies: [sup('26-inch bundles', 150), sup('Lace frontal', 60), sup('Hair products', 15)] },
-  { id: 'svc-quickweave', name: 'Quick Weave', price: 12000, duration: 120, supplies: [sup('Bundles', 70), sup('Bonding glue', 8), sup('Wig cap', 3)] },
-  { id: 'svc-sewin', name: 'Sew-In', price: 20000, duration: 180, supplies: [sup('Bundles', 120), sup('Weaving thread', 5)] },
-  { id: 'svc-wig', name: 'Frontal Wig Install', price: 15000, duration: 120, supplies: [sup('Lace glue', 15), sup('Elastic band', 6), sup('Edge control', 8)] },
-  { id: 'svc-silkpress', name: 'Silk Press', price: 8500, duration: 90, supplies: [sup('Heat protectant', 12)] },
+// Her real menu, copied from her Acuity booking page (queenofthekrownbooking.as.me). [category, name, dollars, minutes, description]
+const MENU = [
+  ['Braids', 'Miracle Knot Braids *Burmese curl', 560, 300, 'Made on your natural hair, braided as the foundation, with crochet hair added throughout and to the ends for a full, seamless look. Smedium parts.'],
+  ['Braids', 'Miracle Knot Braids *Loose wave', 600, 300, 'Comes with 2 bundles (full head) of loose wave crochet hair, done with the braid-in method.'],
+  ['Braids', 'Miracle Knots *Body wave', 570, 300, 'Comes with 2 bundles (full head) of body wave crochet hair, done with the braid-in method. Can last up to 2 months!'],
+  ['Bobs', 'Intertwined Bob', 320, 360, ''],
+  ['Bobs', 'Queens Bob 2.0', 300, 420, 'Comes with human hair curls added!'],
+  ['Bobs', 'Flip Over Boho Bob', 370, 420, 'Includes human hair boho along with twist and Fulani!'],
+  ['Bobs', 'Twisted Fulani Bob', 315, 420, ''],
+  ['Bobs', 'Invisible Passion Bob', 240, 270, ''],
+  ['Bobs', 'Invisible Locs', 285, 390, 'Comes with curls.'],
+  ['Bobs', 'Bliss Twist', 295, 360, ''],
+  ['For The Natural Girls', 'Fulani Curly Fro', 400, 240, 'Freestyle Fulani braids in the front, with 2 bundles of Burmese curly crochet hair in the back!'],
+  ['For The Natural Girls', 'Queens Kinky Curly Twist', 400, 300, '100% human hair twists with boho pieces. Bra-strap length; add on length if you want it longer.'],
+  ['For the Loc Girlys', 'Invisible Passion Twist (over locs)', 300, 420, 'Please text a photo of your locs before booking so the right hair can be bought.'],
+  ['For the Loc Girlys', 'Miracle Knots over Locs *Burmese curl', 400, 300, 'Includes a retwist with 100% human hair boho added throughout (3–4 boho pieces per loc). Apply all add-ons. Hair must be washed before the appointment.'],
+  ['Island Twist', 'Queen Twist *Mid back', 320, 420, ''],
+  ['Island Twist', 'Latto Braids with a Twist', 300, 300, 'Hair included! Fulani braids in the front, island twist in the back, with curly ends. Butt length; text to request shorter.'],
+  ['Island Twist', 'Island Twist', 400, 420, 'Smedium parts and curly ends. Add the length you want in the add-ons.'],
+  ['Island Twist', 'Island Twist *Mid back', 350, 360, ''],
+  ['Locs', 'Nubian Locs', 660, 390, 'Comes with 3 bundles of 100% human hair, with boho added throughout and to the ends. Add an extra bundle for a fuller look!'],
+  ['Locs', 'Boho Loc Bob 2.0', 320, 390, 'Soft locs with 100% human hair boho, cut into a bob. 2–4 boho pieces on each loc!'],
+  ['Locs', 'Lotus Locs', 355, 360, 'Lightweight locs with small parts.'],
+  ['Locs', 'Indie Locs', 250, 360, ''],
+  ['Locs', 'Queen Locs', 350, 430, 'Comes with 100% human hair curls and medium parts.'],
+  ['Locs', 'Mermaid Locs', 420, 430, 'Waist/butt length.'],
+  ['Men Styles', 'Twist (men)', 75, 180, 'Done on natural hair. Come with your hair washed.'],
+  ['Men Styles', 'Freestyle Braids', 70, 210, 'Natural hair only.'],
+  ["Men Styles", "The King's Choice", 135, 270, ''],
+  ['New Styles', 'Creative Control Service', 200, 420, 'Price depends on the style you book.'],
+  ['Passion Twist', 'Passion Twist', 250, 360, ''],
+  ['Passion Twist', 'Curly Passion Twist', 280, 330, 'Rubber bands at the roots, usually waist/butt length.'],
+  ['Passion Twist', 'Crisscross Passion Twist', 400, 390, 'Knotless passion twist in the back, rubber band crisscross in the front, with curly ends. Lasts 4–8 weeks.'],
+  ['Passion Twist', 'Crisscross Passion Twist *Mid back', 285, 300, 'Comes with curls added and curly ends.'],
+  ['Passion Twist', 'Invisible Passion Twist', 300, 360, ''],
+  ['Removals', 'Miracle Knot Take Down', 200, 150, 'Full braid take down plus detangling with leave-in conditioner.'],
+  ['Removals', 'Indie Loc Removal', 85, 240, 'Takes down your locs and plates, then detangles. Add on the loc style you got.'],
+  ['Touch Ups', 'Loc Touch Up', 75, 90, 'Touch up of the whole front half with three loc replacements.'],
+  ['Touch Ups', 'Island Twist *Touch up only', 190, 180, 'Take out only the perimeter of your twist, and wash and blow dry your hair first.'],
+  ['Specialty Services', 'Small Passion Twist Butt Length', 500, 780, 'Butt-length passion twist with human hair curls in the front.'],
 ];
+const slug = s => 'svc-' + s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const defaultServices = () => MENU.map(([cat, name, dollars, duration, desc]) => ({ id: slug(name), cat, name, price: dollars * 100, duration, desc, supplies: [sup('Hair for this style', 0)] }));
+const DEFAULT_POLICIES = `Located in Charlotte, NC. Questions or photos of your hair: text 704-614-3287.
+
+THICK HAIR: select it as an add-on, or there will be an extra charge when you arrive.
+Your hair must be at least 5 inches long all around. Not sure? Text a picture first.
+
+LATE / CANCELLED APPOINTMENTS
+• Cancel at least 24 hours before, by texting 704-614-3287 only.
+• 10 minute grace period. 10+ minutes late = $15 late fee. 15+ minutes late = appointment cancelled.
+• No call / no show = no future appointments.
+• Deposits are NON-REFUNDABLE.
+• Same-day cancellation = charged 100% of the service.
+
+BEFORE YOUR APPOINTMENT
+• No changes after you book and send your deposit.
+• Hair must be washed well and blown out as straight as possible, root to ends, with NO product in it. Natural hair: fully detangle and blow out with a brush.
+• If your fingers can't run through it easily, detangle more (tip: paddle brush + blow dryer together).
+• Hair that isn't washed, blown out and product-free gets an inconvenience fee.
+
+COLORS
+• Hair is provided for all services, in colors 1, 1B, 2, 4, 27 and 30 only. Any other color you buy yourself.
+• After booking, text 704-614-3287 to find out which brand of hair to get.
+
+PHOTOS / VIDEOS
+• Content from appointments is used to promote the business. If you'd rather not be photographed or recorded, say so before your appointment starts.
+
+Thank you, Kheris Sharp`;
 const DEFAULT_MSG = 'Hi {name}! Reminder from {business}: your {service} is {day} at {time}. Reply YES to confirm. See you soon!';
 const freshState = () => ({
-  v: 1, settings: { name: 'Queen of the Krown', reminderMsg: DEFAULT_MSG, hours: { start: '09:00', end: '19:00', days: [2, 3, 4, 5, 6] } }, services: defaultServices(),
+  v: 2, settings: { name: 'Queen of the Krown', reminderMsg: DEFAULT_MSG, policies: DEFAULT_POLICIES, hours: { start: '09:00', end: '19:00', days: [2, 3, 4, 5, 6] } }, services: defaultServices(),
   categories: [...DEFAULT_CATEGORIES], methods: [...DEFAULT_METHODS],
   clients: [], appts: [], payments: [], expenses: [], stock: [],
 });
@@ -81,7 +142,12 @@ const migrate = s => {
   const f = freshState(); for (const k in f) if (s[k] === undefined) s[k] = f[k];
   s.settings.reminderMsg ||= DEFAULT_MSG;
   s.settings.hours ||= f.settings.hours;
+  s.settings.policies ??= DEFAULT_POLICIES;
   const defs = defaultServices();
+  if (!(s.v >= 2)) { // v2: swap the placeholder services for her real menu, keeping any she added herself
+    const OLD = ['svc-knotless', 'svc-bussdown', 'svc-quickweave', 'svc-sewin', 'svc-wig', 'svc-silkpress'];
+    s.services = [...defs, ...s.services.filter(x => !OLD.includes(x.id))]; s.v = 2;
+  }
   s.services.forEach(x => { x.duration ||= defs.find(d => d.id === x.id)?.duration || 120; });
   return s;
 };
@@ -687,7 +753,7 @@ PAGES.settings = {
     return `<div class="stack">
     <div class="card"><h2>Business</h2><form class="row mt" data-form="bizName"><input class="input" name="name" value="${esc(S.settings.name)}" style="max-width:340px" aria-label="Business name" required><button class="btn dark sm">Save name</button></form></div>
     <div class="card" id="services"><div class="card-head"><h2>Services, Prices & Hair Lists</h2><button class="btn dark sm" data-act="editService">${icon('plus')}Add service</button></div>
-      <div class="list">${S.services.map(s => `<div class="item"><div class="grow"><div class="title">${esc(s.name)}</div><div class="meta">${s.supplies.map(x => esc(x.name)).join(', ') || 'No hair list'}</div></div><span class="amt num">${money(s.price)}</span><button class="btn sm ghost" data-act="editService" data-id="${s.id}">${icon('edit')}Edit</button></div>`).join('') || empty('No services yet.')}</div></div>
+      <div class="list">${S.services.map(s => `<div class="item"><div class="grow"><div class="title">${esc(s.name)}</div><div class="meta">${s.cat ? esc(s.cat) + ' · ' : ''}${s.supplies.map(x => esc(x.name)).join(', ') || 'No hair list'}</div></div><span class="amt num">${money(s.price)}</span><button class="btn sm ghost" data-act="editService" data-id="${s.id}">${icon('edit')}Edit</button></div>`).join('') || empty('No services yet.')}</div></div>
     ${Cloud.enabled ? `<div class="card"><h2>Online Booking & Account</h2>
       <p class="small muted">Clients sign up at your link and request a time. You accept or decline each request, and accepted ones go on your calendar. They only see open times, never other clients.</p>
       <div class="row"><input class="input" readonly value="${esc(SITE_URL)}" style="flex:1;min-width:200px" aria-label="Your booking link"><button class="btn ghost sm" data-act="copyLink">Copy link</button></div>
@@ -698,6 +764,10 @@ PAGES.settings = {
         <p class="err" role="alert"></p><div><button class="btn dark sm">Save booking hours</button></div></form>
       <p class="small mt">${icon('check')} Logged in as <b>${esc(Cloud.user?.email || '')}</b> · <span id="syncText">${esc(Cloud.status)}</span></p>
       <button class="btn ghost sm" data-act="logout">Log out</button></div>` : ''}
+    <div class="card"><h2>Booking Policies</h2>
+      <p class="small muted">Clients see this on the login page and must agree to it before they request an appointment.</p>
+      <form class="form" data-form="policies"><textarea class="input" name="text" rows="12" aria-label="Booking policies">${esc(S.settings.policies)}</textarea>
+        <div class="row"><button class="btn dark sm">Save policies</button></div></form></div>
     <div class="card"><h2>Booksy & Importing Appointments</h2>
       <p class="small">Booksy doesn't offer a public connection (API) that lets other apps read a stylist's appointments, so this app <b>can't pull your Booksy bookings in automatically</b> — and it will never ask for your Booksy password.</p>
       <p class="small">What works today:</p>
@@ -1020,6 +1090,7 @@ FORMS.reminderMsg = f => {
   const v = f.msg.value.trim(); if (!v) return toast('Write a message first.', 'error');
   S.settings.reminderMsg = v; save(); toast('Reminder message saved');
 };
+FORMS.policies = f => { S.settings.policies = f.text.value.trim(); save(); toast('Policies saved'); };
 FORMS.bizName = f => {
   const v = f.name.value.trim(); if (!v) return;
   S.settings.name = v; $('#brandName').textContent = v; save(); toast('Business name saved');

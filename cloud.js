@@ -22,23 +22,27 @@ const checkGoogle = () => Promise.all([
   fetch(SUPABASE_URL + '/auth/v1/settings', { headers: { apikey: SUPABASE_KEY } }).then(r => r.json()).then(s => { googleOn = !!s.external?.google; }).catch(() => {}),
   sb.from('public_info').select('info').eq('id', 1).maybeSingle().then(r => { pubInfo = r.data?.info || null; }, () => {}),
 ]);
+const byCat = list => Object.entries(list.reduce((o, s) => ((o[s.cat || 'Services'] ||= []).push(s), o), {}));
+const hrs = m => { m ||= 120; const h = Math.floor(m / 60), r = m % 60; return (h ? h + ' hr' : '') + (r ? ' ' + r + ' min' : ''); };
 const showOnly = id => ['#app', '#auth', '#portal', '#lock'].forEach(s => { $(s).hidden = s !== id; });
 
 // ---------- log in / sign up ----------
 function showAuth(mode = 'login', msg = '', good = false) {
   showOnly('#auth');
   const signup = mode === 'signup', forgot = mode === 'forgot', reset = mode === 'reset';
-  const info = pubInfo, hours = info?.hours || DEFAULT_HOURS;
+  const info = pubInfo || { services: defaultServices(), policies: DEFAULT_POLICIES }, hours = info.hours || DEFAULT_HOURS;
   const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   $('#auth').innerHTML = `<div class="auth-wrap"><section class="auth-hero">
     <div class="brand"><span class="crown">${icon('crown')}</span><span class="brand-name">${esc(info?.name || 'Queen of the Krown')}</span></div>
     <h2>Hair done right.<br><em>Booked in a minute.</em></h2>
-    <p>Pick your style, choose a time that works, and get a confirmation right here. No back-and-forth texting.</p>
+    <p>Braids, locs, twists and bobs in Charlotte, NC. Pick your style, choose a time that works, and get a confirmation right here.</p>
     <div class="hero-grid">
       <div class="hero-box"><h3>How booking works</h3><ol><li>Create your free account</li><li>Choose a service, day and time</li><li>She confirms, and you get reminders</li></ol></div>
       <div class="hero-box"><h3>Hours</h3><p>${hours.days.map(d => DAYS[d]).join(', ')}<br>${L.time12(hours.start)} – ${L.time12(hours.end)}</p></div>
     </div>
-    ${info?.services?.length ? `<div class="hero-box"><h3>Services</h3><ul class="hero-svcs">${info.services.map(s => `<li><span>${esc(s.name)}</span><b>${money(s.price)}</b></li>`).join('')}</ul></div>` : ''}
+    ${info.services?.length ? `<div class="hero-box"><h3>Services & Prices</h3>${byCat(info.services).map(([cat, list], i) => `<details class="hero-cat" ${i ? '' : 'open'}><summary>${esc(cat)} <span>${list.length}</span></summary>
+      <ul class="hero-svcs">${list.map(s => `<li title="${esc(s.desc || '')}"><span>${esc(s.name)}<small>${hrs(s.duration)}</small></span><b>${money(s.price)}</b></li>`).join('')}</ul></details>`).join('')}</div>` : ''}
+    ${info.policies ? `<details class="hero-box hero-pol"><summary><h3>Please read before booking</h3></summary><div class="policy">${esc(info.policies)}</div></details>` : ''}
   </section>
   <div class="auth-card">
     <div class="auth-brand"><span class="crown">${icon('crown')}</span><h1>Queen of the Krown</h1>
@@ -168,18 +172,22 @@ function renderPortal() {
     <div class="card mt"><h2>Book an Appointment</h2>
       ${!info ? empty('Online booking opens soon.') : `
       <div class="step">1. Pick a service</div>
-      <div class="svc-grid">${info.services.map(s => `<button class="svc ${PT.svc?.id === s.id ? 'on' : ''}" data-act="pSvc" data-id="${esc(s.id)}"><b>${esc(s.name)}</b><span>${money(s.price)} · ${(s.duration || 120) / 60} hr</span></button>`).join('')}</div>
+      ${byCat(info.services).map(([cat, list]) => `<div class="svc-cat">${esc(cat)}</div><div class="svc-grid">${list.map(s => `<button class="svc ${PT.svc?.id === s.id ? 'on' : ''}" data-act="pSvc" data-id="${esc(s.id)}"><b>${esc(s.name)}</b><span>${money(s.price)} · ${hrs(s.duration)}</span></button>`).join('')}</div>`).join('')}
+      ${PT.svc?.desc ? `<div class="hint mt">${esc(PT.svc.desc)}</div>` : ''}
       ${PT.svc ? `<div class="step">2. Pick a day</div>
         ${dates.length ? `<div class="slots">${dates.map(d => `<button class="${PT.date === d ? 'on' : ''}" data-act="pDate" data-d="${d}">${relDay(d)}</button>`).join('')}</div>` : '<p class="muted small">No open times in the next 6 weeks. Please check back soon.</p>'}` : ''}
       ${PT.date ? `<div class="step">3. Pick a time</div><div class="slots">${times.map(x => `<button class="${PT.time === x ? 'on' : ''}" data-act="pTime" data-t="${x}">${L.time12(x)}</button>`).join('')}</div>` : ''}
       ${PT.time ? `<form class="form mt" data-form="pBook"><label class="field"><span>Anything she should know? (optional)</span><textarea class="input" name="notes" maxlength="500" placeholder="e.g. color 1B, length, inspo"></textarea></label>
         <div class="hint">${esc(PT.svc.name)} · <b>${relDay(PT.date)} at ${L.time12(PT.time)}</b> · ${money(PT.svc.price)}<br>This is a request. You'll see “Confirmed” here once she accepts.</div>
+        ${info.policies ? `<details class="mt"><summary><b>Booking policies</b> (deposits, late fees, hair prep)</summary><div class="policy small">${esc(info.policies)}</div></details>
+        <label class="check"><input type="checkbox" name="agree" required> I've read and agree to the booking policies</label>` : ''}
         <p class="err" role="alert"></p><button class="btn gold block">Request this appointment</button></form>` : ''}`}
     </div>
     ${minePast.length ? `<div class="card mt"><h2>Past & Cancelled</h2><div class="list mt">${minePast.map(bookingRow).join('')}</div></div>` : ''}
     <p class="tiny muted center mt">Logged in as ${esc(PT.user.email)}</p></div>`;
 }
 FORMS.pBook = async f => {
+  if (f.agree && !f.agree.checked) return formErr(f, 'Please read and agree to the booking policies first.');
   const btn = $('button.gold', f); btn.disabled = true;
   const { error } = await sb.from('bookings').insert({
     client_name: PT.profile.full_name || PT.user.email, phone: PT.profile.phone || null, service_id: PT.svc.id, service_name: PT.svc.name,
@@ -270,8 +278,8 @@ async function cloudSync() {
 async function publishInfo() {
   const t = today();
   const info = {
-    name: S.settings.name, hours: S.settings.hours,
-    services: S.services.map(s => ({ id: s.id, name: s.name, price: s.price, duration: s.duration || 120 })),
+    name: S.settings.name, hours: S.settings.hours, policies: S.settings.policies,
+    services: S.services.map(s => ({ id: s.id, cat: s.cat || '', name: s.name, price: s.price, duration: s.duration || 120, desc: s.desc || '' })),
     busy: S.appts.filter(a => !a.demo && live(a) && a.date >= t && a.time).map(a => ({ date: a.date, time: a.time, duration: a.duration || 120 })),
   };
   const json = JSON.stringify(info);
