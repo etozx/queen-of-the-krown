@@ -38,12 +38,14 @@ function showAuth(mode = 'login', msg = '', good = false) {
       ${forgot ? '' : `<label class="field"><span>${reset ? 'New password' : 'Password'}</span><input class="input" name="password" type="password" autocomplete="${signup || reset ? 'new-password' : 'current-password'}" minlength="8" required>${signup || reset ? '<small>At least 8 characters.</small>' : ''}</label>`}
       <p class="${good ? 'hint' : 'err'}" role="alert" ${msg ? '' : 'hidden'}>${esc(msg)}</p>
       <button class="btn dark block">${reset ? 'Save new password' : forgot ? 'Send reset link' : signup ? 'Create account' : 'Log in'}</button>
-      ${mode === 'login' ? '<button type="button" class="btn ghost block" data-auth="forgot">Forgot password?</button>' : ''}
+      ${mode === 'login' ? '<button type="button" class="btn ghost block" data-auth="forgot">Forgot password?</button><button type="button" class="btn ghost block" id="previewBtn">Just look around (this device only)</button>' : ''}
       ${forgot ? '<button type="button" class="btn ghost block" data-auth="login">Back to log in</button>' : ''}
     </form>
     <p class="tiny muted center">We only keep your name, phone and email to manage your appointments.</p></div>`;
   $$('[data-auth]').forEach(b => b.addEventListener('click', () => showAuth(b.dataset.auth)));
   // Google checks the email is real, so these accounts are verified without us sending any email.
+  // shortcut: opens the app offline with sample data and nothing from the cloud; remove once the owner account exists
+  $('#previewBtn')?.addEventListener('click', () => { showOnly(''); boot(); });
   const g = $('#googleBtn');
   if (g) {
     g.hidden = !googleOn; g.nextElementSibling.hidden = !googleOn;
