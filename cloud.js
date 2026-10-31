@@ -17,15 +17,30 @@ function friendly(e) {
   if (/fetch|network/i.test(m)) return "Can't reach the internet right now. Try again in a moment.";
   return m || 'Something went wrong. Please try again.';
 }
-let googleOn = false; // the Google button only shows once Google sign-in is switched on in Supabase
-const checkGoogle = () => fetch(SUPABASE_URL + '/auth/v1/settings', { headers: { apikey: SUPABASE_KEY } }).then(r => r.json()).then(s => { googleOn = !!s.external?.google; }).catch(() => {});
+let googleOn = false, pubInfo = null; // the Google button only shows once Google sign-in is switched on in Supabase
+const checkGoogle = () => Promise.all([
+  fetch(SUPABASE_URL + '/auth/v1/settings', { headers: { apikey: SUPABASE_KEY } }).then(r => r.json()).then(s => { googleOn = !!s.external?.google; }).catch(() => {}),
+  sb.from('public_info').select('info').eq('id', 1).maybeSingle().then(r => { pubInfo = r.data?.info || null; }, () => {}),
+]);
 const showOnly = id => ['#app', '#auth', '#portal', '#lock'].forEach(s => { $(s).hidden = s !== id; });
 
 // ---------- log in / sign up ----------
 function showAuth(mode = 'login', msg = '', good = false) {
   showOnly('#auth');
   const signup = mode === 'signup', forgot = mode === 'forgot', reset = mode === 'reset';
-  $('#auth').innerHTML = `<div class="auth-card">
+  const info = pubInfo, hours = info?.hours || DEFAULT_HOURS;
+  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  $('#auth').innerHTML = `<div class="auth-wrap"><section class="auth-hero">
+    <div class="brand"><span class="crown">${icon('crown')}</span><span class="brand-name">${esc(info?.name || 'Queen of the Krown')}</span></div>
+    <h2>Hair done right.<br><em>Booked in a minute.</em></h2>
+    <p>Pick your style, choose a time that works, and get a confirmation right here. No back-and-forth texting.</p>
+    <div class="hero-grid">
+      <div class="hero-box"><h3>How booking works</h3><ol><li>Create your free account</li><li>Choose a service, day and time</li><li>She confirms, and you get reminders</li></ol></div>
+      <div class="hero-box"><h3>Hours</h3><p>${hours.days.map(d => DAYS[d]).join(', ')}<br>${L.time12(hours.start)} – ${L.time12(hours.end)}</p></div>
+    </div>
+    ${info?.services?.length ? `<div class="hero-box"><h3>Services</h3><ul class="hero-svcs">${info.services.map(s => `<li><span>${esc(s.name)}</span><b>${money(s.price)}</b></li>`).join('')}</ul></div>` : ''}
+  </section>
+  <div class="auth-card">
     <div class="auth-brand"><span class="crown">${icon('crown')}</span><h1>Queen of the Krown</h1>
       <p>${reset ? 'Choose a new password.' : forgot ? "We'll email you a link to reset your password." : signup ? 'Create your account to book appointments.' : 'Welcome back! Log in to continue.'}</p></div>
     ${forgot || reset ? '' : `<button type="button" class="btn ghost block google" id="googleBtn"><svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.5 30.2 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.8 6C12.3 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.8c4.3-4 6.9-9.9 6.9-17.2z"/><path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.2.8-4.7l-7.8-6C1 16.6 0 20.2 0 24s1 7.4 2.6 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.8c-2.1 1.4-4.8 2.3-8.5 2.3-6.3 0-11.7-4.1-13.6-9.8l-7.8 6C6.6 42.6 14.6 48 24 48z"/></svg>Continue with Google</button>
@@ -41,7 +56,7 @@ function showAuth(mode = 'login', msg = '', good = false) {
       ${mode === 'login' ? '<button type="button" class="btn ghost block" data-auth="forgot">Forgot password?</button><button type="button" class="btn ghost block" id="previewBtn">Just look around (this device only)</button>' : ''}
       ${forgot ? '<button type="button" class="btn ghost block" data-auth="login">Back to log in</button>' : ''}
     </form>
-    <p class="tiny muted center">We only keep your name, phone and email to manage your appointments.</p></div>`;
+    <p class="tiny muted center">We only keep your name, phone and email to manage your appointments.</p></div></div>`;
   $$('[data-auth]').forEach(b => b.addEventListener('click', () => showAuth(b.dataset.auth)));
   // Google checks the email is real, so these accounts are verified without us sending any email.
   // shortcut: opens the app offline with sample data and nothing from the cloud; remove once the owner account exists

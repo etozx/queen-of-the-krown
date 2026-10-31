@@ -289,6 +289,30 @@ table.simple .input { min-height: 38px; padding: 6px 10px; font-size: 14px; }
 .auth-brand .crown svg.i { width: 44px; height: 44px; }
 .auth-brand h1 { font-family: var(--serif); font-size: 32px; margin: 6px 0 4px; }
 .auth-brand p { color: var(--muted); margin: 0; }
+.auth-wrap { width: 100%; max-width: 1120px; display: grid; grid-template-columns: 1.15fr 420px; gap: 56px; align-items: center; }
+.auth-hero { color: #e9e2d4; }
+.auth-hero .brand { display: flex; align-items: center; gap: 10px; color: var(--gold-2); }
+.auth-hero .brand-name { font-family: var(--serif); font-size: 24px; font-weight: 600; color: #fff; }
+.auth-hero h2 { font-family: var(--serif); font-size: clamp(36px, 4.4vw, 58px); line-height: 1.05; color: #fff; margin: 28px 0 14px; font-weight: 600; }
+.auth-hero h2 em { color: var(--gold-2); }
+.auth-hero > p { color: #b9b0a0; font-size: 17px; max-width: 520px; margin: 0 0 28px; }
+.hero-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; margin-bottom: 14px; }
+.hero-box { border: 1px solid rgba(217, 191, 127, .22); background: rgba(255, 255, 255, .03); border-radius: 18px; padding: 16px 18px; }
+.hero-box h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--gold-2); font-weight: 600; }
+.hero-box p, .hero-box ol { margin: 0; color: #ddd5c6; line-height: 1.7; }
+.hero-box ol { padding-left: 20px; }
+.hero-svcs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; }
+.hero-svcs li { display: flex; justify-content: space-between; gap: 10px; color: #ddd5c6; border-bottom: 1px dashed rgba(217, 191, 127, .18); padding: 4px 0; }
+.hero-svcs b { color: #fff; font-weight: 500; }
+#previewBtn { border-color: var(--gold); color: var(--gold); }
+@media (max-width: 960px) {
+  .auth { align-items: flex-start; }
+  .auth-wrap { grid-template-columns: 1fr; gap: 28px; max-width: 460px; }
+  .auth-card { order: -1; }
+  .auth-hero .brand { display: none; }
+  .auth-hero h2 { margin-top: 18px; }
+  .hero-grid, .hero-svcs { grid-template-columns: 1fr; }
+}
 .auth-tabs { display: flex; margin-bottom: 16px; }
 .auth-tabs button { flex: 1; }
 .portal { max-width: 720px; margin: 0 auto; padding: 16px 16px 48px; }
