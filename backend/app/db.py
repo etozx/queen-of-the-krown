@@ -11,8 +11,21 @@ from sqlalchemy import (JSON, BigInteger, Column, Date, DateTime, ForeignKey, In
                         create_engine, func)
 from sqlalchemy.dialects.postgresql import JSONB
 
+
+def database_url():
+    url = os.environ.get("DATABASE_URL", "sqlite:///./dev.db")
+    # Hosts hand out postgres:// URLs; SQLAlchemy needs the driver named.
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
+# On PostgreSQL the tables live in their own schema, away from anything else in the database
+# (on Supabase, the public schema is readable through its REST API, so we stay out of it).
+SCHEMA = "qotk" if database_url().startswith("postgresql") else None
 Json = JSON().with_variant(JSONB(), "postgresql")
-metadata = MetaData()
+metadata = MetaData(schema=SCHEMA)
 
 owners = Table(
     "owners", metadata,
@@ -89,15 +102,6 @@ for kind, (name, cols) in KINDS.items():
 def columns_for(kind, item):
     """Typed columns pulled out of one app record."""
     return {col: conv(item.get(field)) for col, _, field, conv in KINDS[kind][1]}
-
-
-def database_url():
-    url = os.environ.get("DATABASE_URL", "sqlite:///./dev.db")
-    # Hosts hand out postgres:// URLs; SQLAlchemy needs the driver named.
-    for prefix in ("postgres://", "postgresql://"):
-        if url.startswith(prefix):
-            return "postgresql+psycopg://" + url[len(prefix):]
-    return url
 
 
 def make_engine(url=None):

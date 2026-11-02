@@ -13,10 +13,10 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import delete, func, insert, select, text
 from sqlalchemy.exc import IntegrityError
 
-from .db import KINDS, make_engine, metadata, owners, sessions
+from .db import KINDS, SCHEMA, make_engine, metadata, owners, sessions
 from .security import RateLimiter, hash_password, new_token, token_hash, verify_password
 from .sync import Conflict, load_state, save_state
 
@@ -58,6 +58,9 @@ def create_app(database_url=None):
     @asynccontextmanager
     async def lifespan(_):
         # shortcut: creates missing tables on start; switch to Alembic migrations before changing existing columns.
+        if SCHEMA and engine.dialect.name == "postgresql":
+            with engine.begin() as conn:
+                conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{SCHEMA}"'))
         metadata.create_all(engine)
         yield
 
