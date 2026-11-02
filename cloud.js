@@ -139,7 +139,7 @@ const BOOK_CHIP = { requested: 'booked', confirmed: 'paid', declined: 'unpaid', 
 
 async function showPortal(user) {
   PT.user = user; showOnly('#portal');
-  $('#portal').innerHTML = `<div class="portal">${empty('Loading…')}</div>`;
+  $('#portal').innerHTML = `<div class="portal">${UI.skeleton('list')}</div>`;
   await loadPortal(); renderPortal();
 }
 async function loadPortal() {
@@ -182,7 +182,7 @@ function renderPortal() {
       <p class="err" role="alert"></p><button class="btn dark block">Save</button></form></div>`}
     ${mineNext.length ? `<div class="card"><h2>My Appointments</h2><div class="list mt">${mineNext.map(bookingRow).join('')}</div></div>` : ''}
     <div class="card mt"><h2>Book an Appointment</h2>
-      ${!info ? empty('Online booking opens soon.') : `
+      ${!info ? empty('Online booking opens soon', { ic: 'calendar', hint: 'Check back shortly.' }) : `
       <div class="step">1. Pick a service</div>
       ${byCat(info.services).map(([cat, list]) => `<div class="svc-cat">${esc(cat)}</div><div class="svc-grid">${list.map(s => `<button class="svc ${PT.svc?.id === s.id ? 'on' : ''}" data-act="pSvc" data-id="${esc(s.id)}"><b>${esc(s.name)}</b><span>${money(s.price)} · ${hrs(s.duration)}</span></button>`).join('')}</div>`).join('')}
       ${PT.svc?.desc ? `<div class="hint mt">${esc(PT.svc.desc)}</div>` : ''}

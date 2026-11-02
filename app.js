@@ -46,6 +46,7 @@ const P = {
   camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   check: '<path d="m5 12 5 5 9-10"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   box: '<path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/>',
   trend: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
@@ -230,7 +231,8 @@ const pickedAddons = (svc, f) => { const ids = $$('input[name=addon]:checked', f
 const withAddons = (svc, list) => ({ price: (svc?.price || 0) + list.reduce((n, x) => n + x.price, 0), duration: (svc?.duration || 120) + list.reduce((n, x) => n + (x.duration || 0), 0) });
 const radios = (name, list, sel) => list.map(v => `<label><input type="radio" name="${name}" value="${esc(v)}" ${v === sel ? 'checked' : ''}><span>${esc(v)}</span></label>`).join('');
 const stat = (label, value, sub, ic, cls = '') => `<div class="card stat ${cls}"><div class="label">${icon(ic)}${esc(label)}</div><div class="value">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
-const empty = msg => `<div class="empty">${msg}</div>`;
+// Empty state: icon, what's missing, what to do next, and (optionally) the button that does it.
+const empty = (title, { ic = 'sparkle', hint = '', act = '', label = '', data = '' } = {}) => `<div class="empty">${icon(ic)}<p class="empty-title">${title}</p>${hint ? `<p class="empty-hint">${hint}</p>` : ''}${act ? `<button class="btn sm dark" data-act="${act}" ${data}>${icon('plus')}${label}</button>` : ''}</div>`;
 const chip = (cls, text) => `<span class="chip ${cls}">${esc(text)}</span>`;
 const demoChip = x => (x.demo ? chip('demo', 'Sample') : '');
 
@@ -262,7 +264,7 @@ const line = (label, data, color = GOLD) => ({ label, data, borderColor: color, 
 const bars = (label, data, color = GOLD) => ({ label, data, backgroundColor: color, borderRadius: 8, maxBarThickness: 38 });
 const toD = arr => arr.map(c => c / 100);
 const donutData = entries => [{ data: entries.map(e => e[1] / 100), backgroundColor: PALETTE, borderWidth: 2, borderColor: '#fff' }];
-const chartBox = (id, has, sm) => (has ? `<div class="chart-box ${sm ? 'sm' : ''}"><canvas id="${id}"></canvas></div>` : empty('Nothing to show yet for this time.'));
+const chartBox = (id, has, sm) => (has ? `<div class="chart-box ${sm ? 'sm' : ''}"><canvas id="${id}"></canvas></div>` : empty('No numbers for this period yet', { ic: 'chart', hint: 'Charts fill in as you log payments and expenses.' }));
 
 // ---------- shared bits ----------
 function demoBanner() {
@@ -295,7 +297,7 @@ function reminders() {
 }
 function reminderList(max = 6) {
   const r = reminders();
-  if (!r.length) return empty('All caught up. Nothing needs your attention.');
+  if (!r.length) return empty('All caught up', { ic: 'check', hint: 'Reminders, balances and hair to buy show up here.' });
   return `<div class="list reminders">${r.slice(0, max).map(x => `<${x.href ? `a href="${x.href}"${x.remind ? ` data-remind="${x.remind}"` : ''}` : `div ${x.act}`} class="item click" style="text-decoration:none">${icon(x.ic)}<div class="grow small">${x.text}</div>${icon('right')}</${x.href ? 'a' : 'div'}>`).join('')}
     ${r.length > max ? `<div class="tiny muted mt">+ ${r.length - max} more</div>` : ''}</div>`;
 }
@@ -392,15 +394,15 @@ PAGES.dashboard = {
     </div>
     <div class="grid cols-2-even mt">
       <div class="card"><div class="card-head"><h2>Clients Coming Up</h2><a class="small" href="#/appointments">See all</a></div>
-        ${upcoming(14).slice(0, 5).map(a => apptRow(a, { noActions: true })).join('') || empty('No upcoming appointments.')}</div>
+        ${upcoming(14).slice(0, 5).map(a => apptRow(a, { noActions: true })).join('') || empty('No clients in the next 2 weeks', { ic: 'calendar', hint: 'Booked appointments show up here.', act: 'addAppt', label: 'Add appointment' })}</div>
       <div class="card"><div class="card-head"><h2>Who Still Owes Me</h2><span class="muted small">${money(unpaid.reduce((t, a) => t + bal(a), 0))} total</span></div>
-        ${unpaid.length ? `<div class="list">${unpaid.slice(0, 5).map(a => `<div class="item"><div class="avatar">${initials(cName(a.clientId))}</div><div class="grow"><div class="title">${esc(cName(a.clientId))}</div><div class="meta">${relDay(a.date)} · ${esc(a.serviceName)} · ${PAY_LABEL[payStatus(a)]}</div></div><span class="amt num" style="color:var(--red)">${money(bal(a))}</span><button class="btn sm gold" data-act="logPayment" data-appt="${a.id}">Paid</button></div>`).join('')}</div>` : empty('Nobody owes you anything. 👑')}</div>
+        ${unpaid.length ? `<div class="list">${unpaid.slice(0, 5).map(a => `<div class="item"><div class="avatar">${initials(cName(a.clientId))}</div><div class="grow"><div class="title">${esc(cName(a.clientId))}</div><div class="meta">${relDay(a.date)} · ${esc(a.serviceName)} · ${PAY_LABEL[payStatus(a)]}</div></div><span class="amt num" style="color:var(--red)">${money(bal(a))}</span><button class="btn sm gold" data-act="logPayment" data-appt="${a.id}">Paid</button></div>`).join('')}</div>` : empty('Nobody owes you anything 👑', { ic: 'wallet', hint: 'Deposits and unpaid balances show up here.' })}</div>
     </div>
     <div class="grid cols-2-even mt">
       <div class="card"><div class="card-head"><h2>Recent Payments</h2><a class="small" href="#/payments">See all</a></div>
-        <div class="list">${[...S.payments].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map(payRow).join('') || empty('No payments logged yet.')}</div></div>
+        <div class="list">${[...S.payments].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map(payRow).join('') || empty('No payments yet', { ic: 'wallet', hint: 'Log cash, Cash App or Zelle the moment you get paid.', act: 'logPayment', label: 'Log payment' })}</div></div>
       <div class="card"><div class="card-head"><h2>Recent Expenses</h2><a class="small" href="#/expenses">See all</a></div>
-        <div class="list">${[...S.expenses].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map(expRow).join('') || empty('No expenses logged yet.')}</div></div>
+        <div class="list">${[...S.expenses].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map(expRow).join('') || empty('No expenses yet', { ic: 'receipt', hint: 'Add the hair, products and supplies you buy.', act: 'addExpense', label: 'Add expense' })}</div></div>
     </div>`;
   },
   mount() {
@@ -434,6 +436,7 @@ PAGES.appointments = {
       const body = `<div class="spread" style="margin-bottom:10px"><button class="icon-btn" data-act="weekNav" data-n="-1" aria-label="Previous week">${icon('left')}</button>
         <div class="section-title" style="font-size:21px">${MON[st.getMonth()]} ${st.getDate()} – ${MON[end.getMonth()]} ${end.getDate()}</div>
         <div class="row" style="gap:4px"><button class="btn sm ghost" data-act="weekNav" data-n="0">This week</button><button class="icon-btn" data-act="weekNav" data-n="1" aria-label="Next week">${icon('right')}</button></div></div>
+        ${list.length ? '' : `<div class="cal-empty">${icon('calendar')}<span><b>Nothing booked this week.</b> Tap any time below to add an appointment.</span></div>`}
         <div class="scroll-x"><div class="week"><div></div>${days.map(head).join('')}
           <div class="wk-times" style="height:${hours.length * H}px">${hours.map(h => `<span style="top:${(h - startH) * H}px">${L.time12(String(h).padStart(2, '0') + ':00')}</span>`).join('')}</div>
           ${days.map(col).join('')}</div></div>
@@ -446,11 +449,11 @@ PAGES.appointments = {
     if (v === 'upcoming') {
       const list = S.appts.filter(a => a.date >= t && a.status === 'booked').sort(sortAppt);
       let last = '';
-      body = list.map(a => { const h = a.date !== last ? `<div class="date-head">${relDay(a.date)}</div>` : ''; last = a.date; return h + apptRow(a); }).join('') || empty('No upcoming appointments. Tap “Add appointment” or import from Booksy.');
+      body = list.map(a => { const h = a.date !== last ? `<div class="date-head">${relDay(a.date)}</div>` : ''; last = a.date; return h + apptRow(a); }).join('') || empty('Nothing coming up', { ic: 'calendar', hint: 'Add an appointment, or import your bookings from a file.', act: 'addAppt', label: 'Add appointment' });
     }
     if (v === 'past') {
       const list = S.appts.filter(a => a.date < t || a.status !== 'booked').filter(a => a.date >= L.addDays(t, -60)).sort(sortAppt).reverse();
-      body = list.map(a => apptRow(a)).join('') || empty('No past appointments in the last 60 days.');
+      body = list.map(a => apptRow(a)).join('') || empty('No past appointments', { ic: 'clock', hint: 'Finished and cancelled appointments from the last 60 days show here.' });
     }
     if (v === 'day') {
       const d = ui.day || t;
@@ -458,7 +461,7 @@ PAGES.appointments = {
       body = `<div class="spread" style="margin-bottom:8px"><button class="icon-btn" data-act="dayNav" data-n="-1" aria-label="Previous day">${icon('left')}</button>
         <div class="section-title">${relDay(d)}${d === t || d === L.addDays(t, 1) || d === L.addDays(t, -1) ? ` <span class="muted small" style="font-family:var(--sans)">${fmtDate(d)}</span>` : ''}</div>
         <button class="icon-btn" data-act="dayNav" data-n="1" aria-label="Next day">${icon('right')}</button></div>
-        ${list.map(a => apptRow(a)).join('') || empty('Nothing booked this day.')}
+        ${list.map(a => apptRow(a)).join('') || empty('Free day', { ic: 'calendar', hint: 'Nothing is booked yet.' })}
         <div class="center mt"><button class="btn ghost sm" data-act="addAppt" data-date="${d}">${icon('plus')}Add appointment on this day</button></div>`;
     }
     if (v === 'month') {
@@ -476,7 +479,9 @@ PAGES.appointments = {
       const x = L.parse(m);
       body = `<div class="spread" style="margin-bottom:10px"><button class="icon-btn" data-act="monthNav" data-n="-1" aria-label="Previous month">${icon('left')}</button>
         <div class="section-title">${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][x.getMonth()]} ${x.getFullYear()}</div>
-        <button class="icon-btn" data-act="monthNav" data-n="1" aria-label="Next month">${icon('right')}</button></div><div class="cal">${cells}</div>
+        <button class="icon-btn" data-act="monthNav" data-n="1" aria-label="Next month">${icon('right')}</button></div>
+        ${S.appts.some(a => a.date.slice(0, 7) === m.slice(0, 7) && live(a)) ? '' : `<div class="cal-empty">${icon('calendar')}<span><b>Nothing booked this month.</b> Tap a day to plan it.</span></div>`}
+        <div class="cal">${cells}</div>
         <p class="tiny muted">Tap a day to see its schedule.</p>`;
     }
     return `${requestsCard()}<div class="spread" style="margin-bottom:14px"><div class="tabs">${tabs.map(([k, l]) => `<button class="${v === k ? 'on' : ''}" data-act="apptView" data-v="${k}">${l}</button>`).join('')}</div>
@@ -506,7 +511,8 @@ function clientList() {
       <div class="avatar">${c.photos?.[0] ? `<img src="${c.photos[0]}" alt="">` : initials(c.name)}</div>
       <div class="grow"><div class="title">${esc(c.name)} ${s.visits >= 2 ? chip('booked', 'Returning') : ''} ${demoChip(c)}</div>
         <div class="meta">${s.visits} visit${s.visits === 1 ? '' : 's'}${s.last ? ' · last ' + relDay(s.last) : ''}${s.next ? ' · next ' + relDay(s.next.date) : ''}${c.phone ? ' · ' + esc(c.phone) : ''}</div></div>
-      <div style="text-align:right"><div class="amt num">${money(s.spent)}</div>${s.owes ? `<div class="tiny" style="color:var(--red)">owes ${money(s.owes)}</div>` : ''}</div></a>`).join('') || empty(S.clients.length ? 'No clients match.' : 'No clients yet. Add your first client.');
+      <div style="text-align:right"><div class="amt num">${money(s.spent)}</div>${s.owes ? `<div class="tiny" style="color:var(--red)">owes ${money(s.owes)}</div>` : ''}</div></a>`).join('') || (S.clients.length ? empty('No clients match', { ic: 'search', hint: q ? 'Try a different name or phone number.' : { returning: 'Clients with 2 or more visits show here.', new: 'Clients with one visit show here.', owes: 'Nobody owes you money right now. 👑' }[ui.clientFilter] })
+    : empty('No clients yet', { ic: 'users', hint: 'Clients are added for you when you log a payment, or add one now.', act: 'addClient', label: 'Add client' }));
 }
 PAGES.clients = {
   title: () => 'Clients',
@@ -521,7 +527,7 @@ PAGES.client = {
   title: id => findClient(id)?.name || 'Client',
   render(id) {
     const c = findClient(id);
-    if (!c) return empty('This client was deleted. <a href="#/clients">Back to clients</a>');
+    if (!c) return empty('This client was deleted', { ic: 'users', hint: '<a href="#/clients">Back to clients</a>' });
     const s = clientStats(c);
     const styles = [...new Set(s.appts.filter(live).map(a => a.serviceName))];
     return `<a href="#/clients" class="small muted" style="text-decoration:none">${icon('left')} All clients</a>
@@ -536,8 +542,8 @@ PAGES.client = {
       ${stat('Next Visit', s.next ? relDay(s.next.date) : '—', s.next ? esc(s.next.serviceName) : '', 'clock')}</div>
     <div class="card mt"><div class="card-head"><h2>Hairstyles She's Booked</h2></div><div class="row">${styles.map(x => chip('booked', x)).join('') || '<span class="muted">None yet</span>'}</div></div>
     <div class="grid cols-2-even mt">
-      <div class="card"><div class="card-head"><h2>Appointments</h2></div>${s.appts.sort(sortAppt).reverse().map(a => apptRow(a)).join('') || empty('No appointments yet.')}</div>
-      <div class="card"><div class="card-head"><h2>Payments</h2></div><div class="list">${s.pays.sort((a, b) => b.date.localeCompare(a.date)).map(payRow).join('') || empty('No payments yet.')}</div></div>
+      <div class="card"><div class="card-head"><h2>Appointments</h2></div>${s.appts.sort(sortAppt).reverse().map(a => apptRow(a)).join('') || empty('No appointments yet', { ic: 'calendar', act: 'addAppt', label: 'Book her', data: `data-client="${c.id}"` })}</div>
+      <div class="card"><div class="card-head"><h2>Payments</h2></div><div class="list">${s.pays.sort((a, b) => b.date.localeCompare(a.date)).map(payRow).join('') || empty('No payments yet', { ic: 'wallet', act: 'logPayment', label: 'Log payment', data: `data-client="${c.id}"` })}</div></div>
     </div>
     <div class="card mt"><div class="card-head"><h2>Reference Photos</h2>
       <label class="btn ghost sm">${icon('camera')}Add photo<input type="file" accept="image/*" hidden data-change="clientPhoto" data-id="${c.id}"></label></div>
@@ -556,7 +562,8 @@ function paymentsList() {
       <div class="meta">${fmtDate(p.date)} · ${esc(p.method)}${p.deposit ? ' · Deposit' : ''} · ${esc(p.serviceName || '')}${p.note ? ' · ' + esc(p.note) : ''}</div></div>
     <span class="amt num" style="color:var(--green)">+${money(p.amount)}</span>
     <button class="icon-btn" data-act="editPayment" data-id="${p.id}" aria-label="Edit payment">${icon('edit')}</button></div>`).join('')
-    + (list.length > 300 ? `<p class="tiny muted">Showing newest 300 of ${list.length}. Search to find older ones.</p>` : '') || empty('No payments found.');
+    + (list.length > 300 ? `<p class="tiny muted">Showing newest 300 of ${list.length}. Search to find older ones.</p>` : '') || (S.payments.length ? empty('No payments match', { ic: 'search', hint: 'Try another word, or set the method to All methods.' })
+    : empty('No payments yet', { ic: 'wallet', hint: 'Every payment you log shows up here.', act: 'logPayment', label: 'Log payment' }));
 }
 PAGES.payments = {
   title: () => 'Payments',
@@ -579,7 +586,8 @@ function expensesList() {
   const q = (ui.q.expenses || '').toLowerCase();
   const list = S.expenses.filter(e => (!ui.expCat || e.category === ui.expCat) && (!q || [e.desc, e.category, e.date].join(' ').toLowerCase().includes(q)))
     .sort((a, b) => b.date.localeCompare(a.date));
-  return list.slice(0, 300).map(e => expRow(e).replace(/<\/div>$/, `<button class="icon-btn" data-act="editExpense" data-id="${e.id}" aria-label="Edit expense">${icon('edit')}</button></div>`)).join('') || empty('No expenses found.');
+  return list.slice(0, 300).map(e => expRow(e).replace(/<\/div>$/, `<button class="icon-btn" data-act="editExpense" data-id="${e.id}" aria-label="Edit expense">${icon('edit')}</button></div>`)).join('') || (S.expenses.length ? empty('No expenses match', { ic: 'search', hint: 'Try another word, or set the category to All categories.' })
+    : empty('No expenses yet', { ic: 'receipt', hint: 'Track what you spend so “What’s Left” stays right.', act: 'addExpense', label: 'Add expense' }));
 }
 PAGES.expenses = {
   title: () => 'Expenses',
@@ -591,7 +599,7 @@ PAGES.expenses = {
     <div class="grid cols-2 mt">
       <div class="card"><div class="card-head"><h2>Where My Money Goes</h2><span class="muted small">This month</span></div>${chartBox('expDonut', cats.length)}</div>
       <div class="card"><div class="card-head"><h2>By Category</h2><span class="muted small">This month</span></div>
-        <div class="list">${cats.map(([k, v]) => `<div class="item"><div class="grow">${esc(k)}</div><span class="amt num">${money(v)}</span></div>`).join('') || empty('Nothing spent this month.')}</div></div>
+        <div class="list">${cats.map(([k, v]) => `<div class="item"><div class="grow">${esc(k)}</div><span class="amt num">${money(v)}</span></div>`).join('') || empty('Nothing spent this month', { ic: 'receipt' })}</div></div>
     </div>
     <div class="row mt" style="margin-bottom:12px">
       <div class="search">${icon('search')}<input class="input" type="search" placeholder="Search expenses" data-search="expenses" value="${esc(ui.q.expenses || '')}" aria-label="Search expenses"></div>
@@ -625,13 +633,13 @@ PAGES.supplies = {
             <span class="chip ${a.supplies.some(s => s.state === 'need') ? 'need' : 'have'}">${a.supplies.some(s => s.state === 'need') ? money(a.supplies.filter(s => s.state === 'need').reduce((t, s) => t + s.cost, 0)) + ' to buy' : 'Ready'}</span></div>
           <div class="mt">${a.supplies.map(s => `<div class="check"><div class="grow">${esc(s.name)} <span class="muted small num">${s.cost ? money(s.cost) : ''}</span></div>${seg(a, s)}<button class="icon-btn" data-act="delSupply" data-appt="${a.id}" data-id="${s.id}" aria-label="Remove ${esc(s.name)}">${icon('x')}</button></div>`).join('') || '<p class="muted small">No hair or supplies listed for this one.</p>'}</div>
           <form class="row mt" data-form="addSupply" data-appt="${a.id}"><input class="input" name="name" placeholder="Add item (e.g. 30-inch bundles)" style="flex:2;min-width:150px" aria-label="Item name"><input class="input" name="cost" placeholder="$ cost" inputmode="decimal" style="flex:1;min-width:80px" aria-label="Cost"><button class="btn ghost sm">${icon('plus')}Add</button></form>
-        </div>`).join('') || `<div class="card">${empty(`No clients booked in the next ${ui.prepDays} days.`)}</div>`}
+        </div>`).join('') || `<div class="card">${empty(`No clients in the next ${ui.prepDays} days`, { ic: 'scissors', hint: 'Hair to buy for upcoming appointments shows up here.', act: 'addAppt', label: 'Add appointment' })}</div>`}
       </div>
       <div class="stack">
         <div class="card"><div class="card-head"><h2>Shopping List</h2></div>
           ${shop.size ? `<div class="list">${[...shop.values()].map(e => `<div class="item"><div class="grow"><div class="title">${esc(e.name)}${e.n > 1 ? ` <span class="muted">×${e.n}</span>` : ''}</div><div class="meta">For ${esc([...new Set(e.who)].join(', '))}</div></div><span class="amt num">${money(e.cost)}</span>
             <button class="btn sm ghost" data-act="boughtAll" data-name="${esc(e.name)}">${icon('check')}Bought</button></div>`).join('')}</div>
-            <p class="tiny muted mt">Tip: after shopping, add it under Expenses so it counts in “Money Spent”.</p>` : empty('Nothing to buy. You’re all set. 👑')}</div>
+            <p class="tiny muted mt">Tip: after shopping, add it under Expenses so it counts in “Money Spent”.</p>` : empty('Nothing to buy — you’re all set 👑', { ic: 'check' })}</div>
         <div class="card"><div class="card-head"><h2>My Stock</h2></div>
           <div class="list">${S.stock.map(s => `<div class="item"><div class="grow"><div class="title ${s.qty <= s.low ? 'low' : ''}">${esc(s.name)} ${demoChip(s)}</div><div class="meta">${s.qty <= s.low ? 'Running low — ' : ''}remind me at ${s.low}</div></div>
             <div class="qty"><button class="icon-btn" data-act="stockQty" data-id="${s.id}" data-n="-1" aria-label="One less">−</button><b class="num">${s.qty}</b><button class="icon-btn" data-act="stockQty" data-id="${s.id}" data-n="1" aria-label="One more">+</button></div>
@@ -672,7 +680,7 @@ PAGES.analytics = {
       <div class="card"><div class="card-head"><h2>Spending by Category</h2></div>${chartBox('aCat', exp)}</div>
     </div>
     <div class="card mt"><div class="card-head"><h2>Best-Performing Services</h2></div>
-      <div class="list">${svc.slice(0, 8).map(([k, v], i) => `<div class="item"><div class="avatar">${i + 1}</div><div class="grow"><div class="title">${esc(k)}</div><div class="meta">${count(k)} booking${count(k) === 1 ? '' : 's'}</div></div><span class="amt num">${money(v)}</span></div>`).join('') || empty('No payments yet.')}</div></div>`;
+      <div class="list">${svc.slice(0, 8).map(([k, v], i) => `<div class="item"><div class="avatar">${i + 1}</div><div class="grow"><div class="title">${esc(k)}</div><div class="meta">${count(k)} booking${count(k) === 1 ? '' : 's'}</div></div><span class="amt num">${money(v)}</span></div>`).join('') || empty('No income yet', { ic: 'chart', hint: 'Your top hairstyles show here once you log payments.' })}</div></div>`;
   },
   mount() {
     const B = L.buckets(ui.period, today()), from = B[0].from, to = B[B.length - 1].to, lab = B.map(b => b.label);
@@ -699,7 +707,7 @@ PAGES.settings = {
     return `<div class="stack">
     <div class="card"><h2>Business</h2><form class="row mt" data-form="bizName"><input class="input" name="name" value="${esc(S.settings.name)}" style="max-width:340px" aria-label="Business name" required><button class="btn dark sm">Save name</button></form></div>
     <div class="card" id="services"><div class="card-head"><h2>Services, Prices & Hair Lists</h2><button class="btn dark sm" data-act="editService">${icon('plus')}Add service</button></div>
-      <div class="list">${S.services.map(s => `<div class="item"><div class="grow"><div class="title">${esc(s.name)}</div><div class="meta">${s.cat ? esc(s.cat) + ' · ' : ''}${s.supplies.map(x => esc(x.name)).join(', ') || 'No hair list'}</div></div><span class="amt num">${money(s.price)}</span><button class="btn sm ghost" data-act="editService" data-id="${s.id}">${icon('edit')}Edit</button></div>`).join('') || empty('No services yet.')}</div></div>
+      <div class="list">${S.services.map(s => `<div class="item"><div class="grow"><div class="title">${esc(s.name)}</div><div class="meta">${s.cat ? esc(s.cat) + ' · ' : ''}${s.supplies.map(x => esc(x.name)).join(', ') || 'No hair list'}</div></div><span class="amt num">${money(s.price)}</span><button class="btn sm ghost" data-act="editService" data-id="${s.id}">${icon('edit')}Edit</button></div>`).join('') || empty('No services yet', { ic: 'scissors', act: 'editService', label: 'Add service' })}</div></div>
     ${Cloud.enabled ? `<div class="card"><h2>Online Booking & Account</h2>
       <p class="small muted">Clients sign up at your link and request a time. You accept or decline each request, and accepted ones go on your calendar. They only see open times, never other clients.</p>
       <div class="row"><input class="input" readonly value="${esc(SITE_URL)}" style="flex:1;min-width:200px" aria-label="Your booking link"><button class="btn ghost sm" data-act="copyLink">Copy link</button></div>
@@ -1387,9 +1395,13 @@ const CHG = {
 const NAV = [['dashboard', 'Dashboard', 'home'], ['appointments', 'Appointments', 'calendar'], ['clients', 'Clients', 'users'], ['payments', 'Payments', 'wallet'],
   ['expenses', 'Expenses', 'receipt'], ['supplies', 'Hair & Supplies', 'scissors'], ['analytics', 'Analytics', 'chart'], ['settings', 'Settings', 'settings']];
 
-function route() {
+// how: '' = data changed (repaint in place), 'nav' = new page (skeleton, then cascade), 'boot' = first paint, 'tab' = sub-tab switch.
+const SKELETON_MS = { nav: 220, boot: 480 };
+const SKELETON_KIND = { dashboard: 'stats', analytics: 'stats', appointments: 'calendar' };
+let paintToken = 0;
+function route(how = '') {
   const [page = 'dashboard', arg] = location.hash.replace(/^#\/?/, '').split('/');
-  const P = PAGES[page] ? page : 'dashboard';
+  const P = PAGES[page] ? page : 'dashboard', view = $('#view'), token = ++paintToken;
   charts.forEach(c => c.destroy()); charts = [];
   document.body.classList.remove('menu-open');
   const navKey = P === 'client' ? 'clients' : P;
@@ -1397,10 +1409,16 @@ function route() {
   const title = PAGES[P].title(arg);
   $('#pageTitle').textContent = title;
   document.title = `${title} · ${S.settings.name}`;
-  $('#view').innerHTML = PAGES[P].render(arg);
-  PAGES[P].mount?.(arg);
+  const paint = () => {
+    if (token !== paintToken) return; // a newer navigation or refresh already painted
+    view.innerHTML = PAGES[P].render(arg);
+    PAGES[P].mount?.(arg);
+    const m = ui.motion; ui.motion = null;
+    if (how === 'tab' && m) { const tabs = $$('.tabs', view)[m.i]; UI.slideTab(m.from, tabs); UI.cascade(view, tabs); } else if (how) UI.cascade(view);
+  };
+  if ((how === 'nav' || how === 'boot') && !UI.REDUCED.matches) { view.innerHTML = UI.skeleton(SKELETON_KIND[P]); setTimeout(paint, SKELETON_MS[how]); } else paint();
 }
-function refresh() { const y = scrollY; route(); scrollTo(0, y); }
+function refresh() { const y = scrollY; route(ui.motion ? 'tab' : ''); scrollTo(0, y); }
 
 function start() {
   $('#nav').innerHTML = NAV.map(([k, l, i]) => `<a href="#/${k}" data-page="${k}">${icon(i)}${l}</a>`).join('');
@@ -1408,8 +1426,8 @@ function start() {
   hydrate(document);
   if (window.Chart) { Chart.defaults.color = '#7a7266'; Chart.defaults.font.family = 'Jost, system-ui, sans-serif'; Chart.defaults.font.size = 12.5; }
   $('#app').hidden = false; $('#lock').hidden = true;
-  addEventListener('hashchange', () => { route(); scrollTo(0, 0); $('#view').focus({ preventScroll: true }); });
-  route();
+  addEventListener('hashchange', () => { UI.close(); route('nav'); scrollTo(0, 0); $('#view').focus({ preventScroll: true }); });
+  route('boot');
   if (Cloud.enabled) { setSync('Syncing…'); cloudSync(); }
 }
 
@@ -1418,7 +1436,11 @@ document.addEventListener('click', e => {
   const r = e.target.closest('a[data-remind]'); // let the sms: link open, just remember she texted
   if (r) { const a = findAppt(r.dataset.remind); if (a) { a.reminded = today(); save(); setTimeout(refresh, 400); } return; }
   const b = e.target.closest('[data-act]');
-  if (b) { e.preventDefault(); ACT[b.dataset.act]?.(b.dataset, b, e); }
+  if (!b) return;
+  const tabs = b.closest('#view .tabs'); // sub-tab: remember where the active pill was so it can slide
+  if (tabs && !b.classList.contains('on')) ui.motion = { i: $$('#view .tabs').indexOf(tabs), from: $('button.on', tabs)?.getBoundingClientRect() };
+  e.preventDefault(); ACT[b.dataset.act]?.(b.dataset, b, e);
+  ui.motion = null;
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet();
