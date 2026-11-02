@@ -99,7 +99,7 @@ let charts = [];
 let SH = {}; // state for the open sheet
 let rec = null; // active speech recognition
 // Online sync state (cloud.js). version = last copy pulled/pushed; dirty = changes on this device not uploaded yet.
-const Cloud = { enabled: false, user: null, version: 0, dirty: false, bookings: [], status: '', timer: null, lastInfo: '' };
+const Cloud = { enabled: false, user: null, version: 0, dirty: false, status: '', timer: null };
 const ui = { apptView: 'upcoming', day: null, month: null, incomeView: 'weekly', period: 'monthly', prepDays: 14, clientFilter: 'all', q: {}, payMethod: '', expCat: '' };
 
 // ---------- lookups ----------
@@ -318,19 +318,6 @@ function apptRow(a, opts = {}) {
         <button class="btn sm ghost" data-act="editAppt" data-id="${a.id}">${icon('edit')}Edit</button></div>`}
     </div></div>`;
 }
-// Online booking requests waiting for her yes/no (loaded by cloud.js).
-function requestsCard() {
-  const t = today(), list = Cloud.bookings.filter(b => b.status === 'requested' && b.date >= t).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-  if (!list.length) return '';
-  const clash = b => S.appts.some(a => live(a) && L.overlaps(a, b));
-  return `<div class="card requests" style="margin-bottom:16px"><div class="card-head"><h2>New Booking Requests</h2>${chip('booked', `${list.length} waiting`)}</div>
-    ${list.map(b => { const x = L.parse(b.date); return `<div class="appt"><div class="when"><span>${DOW[x.getDay()]}</span><b>${x.getDate()}</b><span>${MON[x.getMonth()]}</span></div>
-      <div class="grow"><div class="spread"><span class="title" style="font-weight:600">${esc(b.client_name)}</span><span class="amt num">${money(b.price || 0)}</span></div>
-        <div class="meta small muted">${relDay(b.date)} at ${L.time12(b.time)} · ${esc(b.service_name)}${b.phone ? ' · ' + esc(b.phone) : ''}</div>
-        ${b.notes ? `<div class="small" style="margin-top:4px">“${esc(b.notes)}”</div>` : ''}
-        ${clash(b) ? `<div style="margin-top:6px">${chip('unpaid', 'Overlaps another appointment')}</div>` : ''}
-        <div class="actions"><button class="btn sm gold" data-act="acceptBooking" data-id="${b.id}">${icon('check')}Accept</button><button class="btn sm ghost" data-act="declineBooking" data-id="${b.id}">Decline</button></div></div></div>`; }).join('')}</div>`;
-}
 const payRow = p => `<div class="item"><div class="avatar">${icon('wallet')}</div><div class="grow"><div class="title">${esc(p.clientName || cName(p.clientId))}</div>
   <div class="meta">${relDay(p.date)} · ${esc(p.method)}${p.deposit ? ' · Deposit' : ''} · ${esc(p.serviceName || '')} ${demoChip(p)}</div></div>
   <span class="amt num" style="color:var(--green)">+${money(p.amount)}</span></div>`;
@@ -356,7 +343,7 @@ PAGES.dashboard = {
     const income = L.series(S.payments, B);
     const cats = L.groupBy(S.expenses, e => e.category, ...R.month);
     const unpaid = owing();
-    return `${demoBanner()}${requestsCard()}
+    return `${demoBanner()}
     <p class="muted" style="margin:0 0 14px">${h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'}. Here's how ${esc(S.settings.name)} is doing — ${fmtDate(t)}.</p>
     <div class="quick">
       <button class="btn gold" data-act="logPayment">${icon('wallet')}Log Payment</button>
@@ -441,7 +428,7 @@ PAGES.appointments = {
           <div class="wk-times" style="height:${hours.length * H}px">${hours.map(h => `<span style="top:${(h - startH) * H}px">${L.time12(String(h).padStart(2, '0') + ':00')}</span>`).join('')}</div>
           ${days.map(col).join('')}</div></div>
         <p class="tiny muted">Tap an empty spot to book that time. Green = paid, amber = deposit or part paid, gold = not paid yet.</p>`;
-      return `${requestsCard()}<div class="spread" style="margin-bottom:14px"><div class="tabs">${tabs.map(([k, l]) => `<button class="${v === k ? 'on' : ''}" data-act="apptView" data-v="${k}">${l}</button>`).join('')}</div>
+      return `<div class="spread" style="margin-bottom:14px"><div class="tabs">${tabs.map(([k, l]) => `<button class="${v === k ? 'on' : ''}" data-act="apptView" data-v="${k}">${l}</button>`).join('')}</div>
         <div class="row"><button class="btn ghost" data-act="importBooksy">${icon('upload')}Import from Booksy</button><button class="btn dark" data-act="addAppt">${icon('plus')}Add appointment</button></div></div>
         <div class="card">${body}</div>`;
     }
@@ -484,7 +471,7 @@ PAGES.appointments = {
         <div class="cal">${cells}</div>
         <p class="tiny muted">Tap a day to see its schedule.</p>`;
     }
-    return `${requestsCard()}<div class="spread" style="margin-bottom:14px"><div class="tabs">${tabs.map(([k, l]) => `<button class="${v === k ? 'on' : ''}" data-act="apptView" data-v="${k}">${l}</button>`).join('')}</div>
+    return `<div class="spread" style="margin-bottom:14px"><div class="tabs">${tabs.map(([k, l]) => `<button class="${v === k ? 'on' : ''}" data-act="apptView" data-v="${k}">${l}</button>`).join('')}</div>
       <div class="row"><button class="btn ghost" data-act="importBooksy">${icon('upload')}Import from Booksy</button><button class="btn dark" data-act="addAppt">${icon('plus')}Add appointment</button></div></div>
       <div class="card">${body}</div>`;
   },
@@ -708,20 +695,14 @@ PAGES.settings = {
     <div class="card"><h2>Business</h2><form class="row mt" data-form="bizName"><input class="input" name="name" value="${esc(S.settings.name)}" style="max-width:340px" aria-label="Business name" required><button class="btn dark sm">Save name</button></form></div>
     <div class="card" id="services"><div class="card-head"><h2>Services, Prices & Hair Lists</h2><button class="btn dark sm" data-act="editService">${icon('plus')}Add service</button></div>
       <div class="list">${S.services.map(s => `<div class="item"><div class="grow"><div class="title">${esc(s.name)}</div><div class="meta">${s.cat ? esc(s.cat) + ' · ' : ''}${s.supplies.map(x => esc(x.name)).join(', ') || 'No hair list'}</div></div><span class="amt num">${money(s.price)}</span><button class="btn sm ghost" data-act="editService" data-id="${s.id}">${icon('edit')}Edit</button></div>`).join('') || empty('No services yet', { ic: 'scissors', act: 'editService', label: 'Add service' })}</div></div>
-    ${Cloud.enabled ? `<div class="card"><h2>Online Booking & Account</h2>
-      <p class="small muted">Clients sign up at your link and request a time. You accept or decline each request, and accepted ones go on your calendar. They only see open times, never other clients.</p>
-      <div class="row"><input class="input" readonly value="${esc(SITE_URL)}" style="flex:1;min-width:200px" aria-label="Your booking link"><button class="btn ghost sm" data-act="copyLink">Copy link</button></div>
-      <form class="form mt" data-form="hours">
-        <div class="field"><span>Days you take bookings</span><div class="pills">${DOW.map((d, i) => `<label><input type="checkbox" name="day" value="${i}" ${S.settings.hours.days.includes(i) ? 'checked' : ''}><span>${d}</span></label>`).join('')}</div></div>
-        <div class="field-row"><label class="field"><span>Opens</span><input class="input" type="time" name="start" value="${S.settings.hours.start}" required></label>
-          <label class="field"><span>Closes</span><input class="input" type="time" name="end" value="${S.settings.hours.end}" required></label></div>
-        <p class="err" role="alert"></p><div><button class="btn dark sm">Save booking hours</button></div></form>
-      <p class="small mt">${icon('check')} Logged in as <b>${esc(Cloud.user?.email || '')}</b> · <span id="syncText">${esc(Cloud.status)}</span></p>
+    ${Cloud.enabled ? `<div class="card"><h2>Online Account</h2>
+      <p class="small muted">Your records are backed up online and stay the same on every device you log in on. They are still saved on this device too, so the app works without internet.</p>
+      <p class="small">${icon('check')} Logged in as <b>${esc(Cloud.user?.email || '')}</b> · <span id="syncText">${esc(Cloud.status)}</span></p>
       <button class="btn ghost sm" data-act="logout">Log out</button></div>` : `<div class="card"><h2>Online Account (optional)</h2>
-      <p class="small muted">Right now everything is saved on this device only. Log in as the owner (kherissharp@gmail.com) to keep a copy online and use it on other devices too.</p>
-      <div class="row"><button class="btn dark sm" data-act="openLogin">Log in</button><a class="btn ghost sm" href="styles.html">View the client hairstyles page</a></div></div>`}
+      <p class="small muted">Right now everything is saved on this device only. ${API_URL ? 'Log in as the owner to keep a copy online and use it on your other devices too.' : 'Online backup turns on once the server is set up.'}</p>
+      <div class="row">${API_URL ? '<button class="btn dark sm" data-act="openLogin">Log in</button>' : ''}<a class="btn ghost sm" href="styles.html">View the client hairstyles page</a></div></div>`}
     <div class="card"><h2>Booking Policies</h2>
-      <p class="small muted">Clients see this on the login page and must agree to it before they request an appointment.</p>
+      <p class="small muted">Your booking rules: deposits, late fees and hair prep.</p>
       <form class="form" data-form="policies"><textarea class="input" name="text" rows="12" aria-label="Booking policies">${esc(S.settings.policies)}</textarea>
         <div class="row"><button class="btn dark sm">Save policies</button></div></form></div>
     <div class="card"><h2>Booksy & Importing Appointments</h2>
@@ -1043,13 +1024,6 @@ FORMS.addTag = f => {
   const k = f.dataset.key, v = f.name.value.trim();
   if (!v || S[k].some(x => x.toLowerCase() === v.toLowerCase())) return toast('That one is already there.', 'error');
   S[k].push(v); save(); refresh();
-};
-FORMS.hours = f => {
-  const days = $$('input[name=day]:checked', f).map(i => +i.value);
-  if (!days.length) return formErr(f, 'Pick at least one day.');
-  if (!f.start.value || !f.end.value || f.start.value >= f.end.value) return formErr(f, 'Closing time must be after opening time.');
-  S.settings.hours = { start: f.start.value, end: f.end.value, days };
-  save(); toast('Booking hours saved');
 };
 FORMS.reminderMsg = f => {
   const v = f.msg.value.trim(); if (!v) return toast('Write a message first.', 'error');

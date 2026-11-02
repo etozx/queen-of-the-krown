@@ -1,0 +1,21 @@
+# Render blueprint: New + > Blueprint > pick this repo. Fill in the two secret values when asked.
+services:
+  - type: web
+    name: qotk-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DATABASE_URL       # PostgreSQL connection string (e.g. from Supabase: Project Settings > Database)
+        sync: false
+      - key: OWNER_SETUP_CODE   # one-time code she types to create the owner account
+        sync: false
+      - key: OWNER_EMAIL
+        value: kherissharp@gmail.com
+      - key: ALLOWED_ORIGINS
+        value: https://etozx.github.io
